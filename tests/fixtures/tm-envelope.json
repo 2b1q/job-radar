@@ -1,0 +1,20 @@
+{
+ "_comment": "SYNTHETIC fixture. Not a captured response: it is modelled on the envelope this endpoint is documented to return, with invented companies, ids and salaries. Nothing here came from an account, and no cookie was involved in making it. Replace it with a real envelope - scrubbed - when one can be captured; until then it pins the parser against the shape we believe in, which is less than pinning it against the shape the board actually sends.",
+ "html": "<article class=\"card-job\"><h3><a class=\"card-job__link\" href=\"https://talent-move.ru/jobs/backend-engineer-10001/\" target=\"_blank\">Backend Engineer</a></h3><div class=\"card-job__company\">@ExampleCo</div><div class=\"card-job__salary\" data-salary-type=\"verified\">300K</div><div class=\"card-job__feature card-job__feature--format\"> <span>Полностью удалённо</span></div><div class=\"card-job__feature card-job__feature--location\"> <span>Сербия</span></div><ul class=\"job-tags\"><li class=\"job-tags__tag job-tags__tag--skill\">Go</li><li class=\"job-tags__tag job-tags__tag--skill\">PostgreSQL</li><li class=\"job-tags__tag job-tags__tag--skill\">Kubernetes</li></ul><span class=\"time-ago__full\">2 дня назад</span></article><article class=\"card-job\"><h3><a class=\"card-job__link\" href=\"https:\\/\\/talent-move.ru\\/jobs\\/ml-engineer-10002\\/\" target=\"_blank\">ML Engineer</a></h3><div class=\"card-job__company\">@SecondExample</div><div class=\"card-job__salary\" data-salary-type=\"estimated\">250K</div><div class=\"card-job__feature card-job__feature--format\"> <span>Полностью удалённо</span></div><div class=\"card-job__feature card-job__feature--location\"> <span>Грузия</span></div><ul class=\"job-tags\"><li class=\"job-tags__tag job-tags__tag--skill\">Python</li><li class=\"job-tags__tag job-tags__tag--skill\">PyTorch</li></ul><span class=\"time-ago__full\">неделю назад</span></article><article class=\"card-job\"><h3><a class=\"card-job__link\" href=\"https://talent-move.ru/jobs/data-analyst-10003/\" target=\"_blank\">Data Analyst</a></h3><div class=\"card-job__company\">@ThirdExample</div><div class=\"card-job__feature card-job__feature--format\"> <span>Гибрид</span></div><div class=\"card-job__feature card-job__feature--location\"> <span>Армения</span></div><ul class=\"job-tags\"><li class=\"job-tags__tag job-tags__tag--skill\">SQL</li></ul><span class=\"time-ago__full\">вчера</span></article>",
+ "found_posts": 3,
+ "max_pages": 1,
+ "current_page": 1,
+ "filter_counts": {
+  "seniority": {
+   "junior": 12,
+   "middle": 48,
+   "senior": 61,
+   "head": 7,
+   "c-level": 2
+  },
+  "employment": {
+   "full-time": 118,
+   "part-time": 9
+  }
+ }
+}

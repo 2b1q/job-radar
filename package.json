@@ -1,0 +1,23 @@
+{
+  "name": "job-radar",
+  "version": "2.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "MCP server for job boards: one adapter per board, one shared shape, cross-board dedup, and a store that remembers what you did with every posting.",
+  "bin": {
+    "job-radar": "server.mjs"
+  },
+  "scripts": {
+    "start": "node --experimental-sqlite server.mjs",
+    "smoke": "node --experimental-sqlite smoke.mjs",
+    "test": "node --experimental-sqlite --test"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.0"
+  }
+}

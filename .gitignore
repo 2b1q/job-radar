@@ -1,0 +1,39 @@
+# Dependencies. The lockfile is committed: it is what makes an install
+# reproducible, and it is the half of the pair that is not derived.
+node_modules/
+
+# The search profile: roles, grades, the countries you would move to, the tag
+# vocabularies you care about. Yours, not the repository's. Only the example
+# version is published.
+profiles.json
+
+# The store. It holds which vacancies were applied to, rejected and skipped -
+# a record of a job search, not source.
+*.db
+*.db-journal
+*.db-wal
+
+# Session cookies and keys. TM_COOKIE is a live account session; same boundary
+# as any other credential - it is passed in the environment, never stored here.
+.env
+.env.*
+!.env.example
+
+# Anything named like a credential, whatever else it is called. The cookie is
+# passed in the environment, but a debugging dump lands in the working
+# directory as easily as anywhere else.
+*_TOKEN*
+*_SECRET*
+*_COOKIE*
+*.pem
+*.key
+
+# Editor and backup leftovers: a copy of an ignored file is not itself ignored.
+*.bak
+*.orig
+*.save
+*.swp
+*~
+
+# Misc
+.DS_Store

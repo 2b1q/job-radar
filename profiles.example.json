@@ -1,0 +1,64 @@
+{
+  "_comment": [
+    "Search profiles. Copy this file to profiles.json and describe your own",
+    "search; profiles.json is gitignored, because what you are looking for and",
+    "where you would move is yours rather than the repository's.",
+    "",
+    "The three profiles below are unrelated on purpose: the file is a schema, not",
+    "a shortlist. `active` picks the default; JOBS_PROFILE overrides it per run.",
+    "",
+    "roles / grades        searched as job title words on boards that search titles",
+    "relocationCountries   ISO-3166 alpha-3, used by the `countries` preset",
+    "skills                board tag slugs. Look them up per board - the same",
+    "                      technology is spelled differently on each, and an",
+    "                      unknown slug returns zero results rather than an error",
+    "categories            names for board taxonomy ids, so a query reads",
+    "                      `category: \"data\"` instead of `38467`. The ids here",
+    "                      are TalentMove's; list them with",
+    "                      /wp-json/wp/v2/job_category?per_page=100&_fields=id,slug,name,count",
+    "                      Leave the map empty and pass raw ids until you have",
+    "                      looked yours up - a wrong id is a full answer from the",
+    "                      wrong filter, not an error",
+    "tagGroups             sets for the intersection filter. A board query can",
+    "                      only union tags, so an intersection is a second query",
+    "                      or a check on what came back. Each group is an OR,",
+    "                      because one idea is usually spread over several",
+    "                      interchangeable tags"
+  ],
+  "active": "dba",
+  "profiles": {
+    "dba": {
+      "roles": ["Database Administrator", "Database Engineer"],
+      "grades": ["middle", "senior"],
+      "relocationCountries": ["deu", "nld"],
+      "skills": ["postgresql", "oracle"],
+      "categories": { "data": 38467 },
+      "tagGroups": {
+        "rdbms": ["PostgreSQL", "Oracle", "MySQL", "MS SQL"],
+        "process": ["ITIL", "ITSM", "SLA", "Incident Management"]
+      }
+    },
+    "product-owner": {
+      "roles": ["Product Owner", "Product Manager"],
+      "grades": ["senior", "lead"],
+      "relocationCountries": [],
+      "skills": [],
+      "categories": {},
+      "tagGroups": {
+        "discovery": ["Discovery", "User Research", "A/B Testing"],
+        "delivery": ["Roadmap", "Stakeholder Management", "Agile", "Scrum"]
+      }
+    },
+    "android": {
+      "roles": ["Android Developer", "Mobile Engineer"],
+      "grades": ["middle", "senior"],
+      "relocationCountries": ["prt", "esp"],
+      "skills": ["kotlin"],
+      "categories": { "dev": 7 },
+      "tagGroups": {
+        "android": ["Kotlin", "Jetpack Compose", "Gradle", "Android SDK"],
+        "quality": ["Unit Testing", "CI/CD", "Espresso"]
+      }
+    }
+  }
+}
