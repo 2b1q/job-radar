@@ -52,6 +52,106 @@ const ROLES = PROFILE.roles || [];
 const GRADES = PROFILE.grades || [];
 const RELOCATION_COUNTRIES = PROFILE.relocationCountries || [];
 
+/**
+ * The boards this server speaks to. Kept here rather than in `server.mjs`
+ * because the profile is validated against it before any adapter is wired up.
+ */
+export const SOURCE_CODES = ['af', 'tm', 'w3'];
+
+/** One list of slugs, checked entry by entry. */
+function skillList(value, where, file) {
+  if (!Array.isArray(value)) {
+    throw new Error(`${file}: skills${where} must be a list of board slugs, not `
+      + `${typeof value}. Slugs are per board - see profiles.example.json`);
+  }
+  return value.map((slug) => {
+    if (typeof slug !== 'string' || !slug.trim()) {
+      throw new Error(`${file}: skills${where} holds ${JSON.stringify(slug)}, which `
+        + 'is not a slug. An empty value is not "no filter": boards answer an '
+        + 'empty parameter with zero results');
+    }
+    return slug.trim();
+  });
+}
+
+/**
+ * Skills are board vocabulary, and board vocabularies are not portable. The same
+ * technology is spelled differently on each: `node-js` is a slug somewhere and
+ * `/node-js-jobs` is a 404 on web3.career, while an unknown member of a comma
+ * list is dropped by TalentMove without a word. One shared list therefore
+ * pretended the data travelled when it does not - a general shape over
+ * board-specific data, which is the failure this repository keeps finding.
+ *
+ * So `skills` is per source, with `default` for the boards that have no list of
+ * their own:
+ *
+ *     "skills": ["postgresql"]                        // every board
+ *     "skills": { "default": ["node-js"], "w3": ["node"] }
+ *
+ * A board with its own list does NOT also get the default: that separation is
+ * what lets a slug written for one board and sent to another be refused here
+ * instead of 404ing halfway through a run.
+ */
+function skillsBySource(skills, file) {
+  if (skills === undefined || skills === null) return { default: [] };
+  if (Array.isArray(skills)) return { default: skillList(skills, '', file) };
+  if (typeof skills !== 'object') return { default: skillList(skills, '', file) };
+
+  const out = {};
+  for (const [key, value] of Object.entries(skills)) {
+    // Checked at load, because a misspelled source key is silence twice over:
+    // the key is ignored, the board quietly gets the default vocabulary, and the
+    // first sign of it is a 404 in the middle of a run.
+    if (key !== 'default' && !SOURCE_CODES.includes(key)) {
+      throw new Error(`${file}: skills."${key}" is not a board. Skills are named `
+        + `per source - ${SOURCE_CODES.join(', ')} - plus "default" for the rest. `
+        + 'A key nobody reads would leave that board on the default vocabulary '
+        + 'and fail as a wrong slug much later');
+    }
+    const list = skillList(value, `.${key}`, file);
+    if (!list.length) {
+      throw new Error(`${file}: skills.${key} is empty. Remove the key to fall `
+        + 'back to the default list, or name the slugs this board uses - an '
+        + 'empty list here reads as "this board has no vocabulary"');
+    }
+    out[key] = list;
+  }
+  return out;
+}
+
+const SKILLS = skillsBySource(PROFILE.skills, PROFILE.source);
+
+/** The slugs this profile uses on one board, falling back to the shared list. */
+export function skillsFor(source) {
+  return SKILLS[source] ?? SKILLS.default ?? [];
+}
+
+/**
+ * Refuse a slug this profile wrote for a different board.
+ *
+ * What is valid on a board is the board's business and cannot be listed here - a
+ * local whitelist would go stale the day a tag is added. What CAN be known
+ * locally is that the caller is using another board's word: that is a
+ * configuration mistake with an address, and it is the one that produced
+ * `/node-js-jobs -> /404` in the middle of a run.
+ */
+function assertBoardSkills(source, slugs) {
+  const mine = new Set(skillsFor(source));
+  const elsewhere = new Set(Object.entries(SKILLS)
+    .filter(([key]) => key !== source)
+    .flatMap(([, list]) => list));
+  for (const slug of slugs) {
+    if (mine.has(slug) || !elsewhere.has(slug)) continue;
+    const known = skillsFor(source);
+    throw new Error(`${source}: "${slug}" is this profile's slug for another `
+      + `board, not for ${source}. Board vocabularies are not portable, and the `
+      + 'wrong one does not come back as an error from the board - it comes back '
+      + `as a 404 page or as an empty answer. ${source} uses `
+      + `[${known.join(', ')}] in profile "${PROFILE.name}"; add the slug to `
+      + `skills.${source} in ${PROFILE.source} if the board really has it`);
+  }
+}
+
 /** Named shortcuts for board taxonomy ids, so a query reads `crypto`, not `903`. */
 export const CATEGORIES = PROFILE.categories || {};
 
@@ -128,6 +228,7 @@ function tmParams({ preset = 'remote', category, skills, date }) {
   // parameter and sending an empty one are opposite requests.
   const list = (Array.isArray(skills) ? skills : String(skills ?? '').split(','))
     .map((s) => s.trim()).filter(Boolean);
+  assertBoardSkills('tm', list);
   if (list.length) params.skills = list.join(',');
   if (date) {
     if (!TM_DATES.has(date)) {
@@ -137,6 +238,20 @@ function tmParams({ preset = 'remote', category, skills, date }) {
     params.date = date;
   }
   return params;
+}
+
+/**
+ * web3.career is addressed by tag page rather than by preset, so `skills` names
+ * the listing slug and only the first one can be asked for at a time. Resolved
+ * in one place because both tools need it, and validated here because a slug
+ * from another board's vocabulary is a redirect to /404 rather than an error.
+ */
+export function w3Tag(skills) {
+  const tag = (Array.isArray(skills) ? skills[0] : String(skills ?? '').split(',')[0] || null);
+  const slug = tag ? String(tag).trim() : null;
+  if (!slug) return null;   // no tag is the whole board, which is a real query
+  assertBoardSkills('w3', [slug]);
+  return slug;
 }
 
 /**

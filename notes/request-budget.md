@@ -19,6 +19,28 @@ existed hold NULL, and folding those into zero would present an incomplete total
 as a complete one — 2 read as the whole budget when five runs simply were not
 counted.
 
+**A new run may no longer land there.** Three TalentMove runs sat in the log as
+`runs 3, requests 0, unrecorded 3` — on the board whose refusal costs a paid
+session, and while the day's volume was running closer to that refusal than
+usual. The row was written all the same, and the budget it spent was reported as
+zero. A run reaches the log only after a board answered it, so the floor is one
+request: a count that is missing or zero is the counter failing, not a free run,
+and it is refused rather than stored. The check runs before the store is
+touched, because failing after `filterFresh` would mark this run's jobs as seen
+without ever returning them.
+
+`unrecorded` stays in the report for the rows that predate the column: "not
+counted" and "cost nothing" remain different facts.
+
+**What is still invisible: a call that raises.** The run log is written after the
+board answers, so a tool call that throws spends its requests and records
+nothing. Measured on one ingest: 7 calls, 6 answered and logged 20 requests
+between them, and the seventh — a tag the board does not have — spent 1 request
+that appears in no run. The budget therefore reads as a lower bound whenever
+something failed, and how to log a failed run without making it look like an
+empty one is undecided: a run row with zero found is exactly what a quiet day
+produces.
+
 This does not explain what the board limits on, and it is not meant to. It turns
 an invisible budget into a measured one, which is what was missing when thirty
 requests exhausted it without anybody noticing.

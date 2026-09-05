@@ -42,6 +42,11 @@ const columns = new Set(db.prepare('PRAGMA table_info(jobs)').all().map((c) => c
 if (!columns.has('source')) db.exec("ALTER TABLE jobs ADD COLUMN source TEXT NOT NULL DEFAULT 'af'");
 if (!columns.has('skills')) db.exec('ALTER TABLE jobs ADD COLUMN skills TEXT');
 if (!columns.has('dup_key')) db.exec('ALTER TABLE jobs ADD COLUMN dup_key TEXT');
+// Where a company came from when the board did not name it - see
+// `resolveCompany`. A derived name is worth having and worth labelling: without
+// this column, a vacancy from a board that never names an employer would simply
+// have one, and nobody would be able to tell how.
+if (!columns.has('company_from')) db.exec('ALTER TABLE jobs ADD COLUMN company_from TEXT');
 const runCols = new Set(db.prepare('PRAGMA table_info(runs)').all().map((c) => c.name));
 if (!runCols.has('source')) db.exec("ALTER TABLE runs ADD COLUMN source TEXT NOT NULL DEFAULT 'af'");
 // How many HTTP requests a run cost. Throttling bounds the rate; nothing bounded
@@ -100,6 +105,92 @@ export function dupKey(company, title) {
   }
 }
 
+// Cross-board employer resolution.
+//
+// One board republishes another's postings and names the employer that the
+// original leaves blank: AgileFluent `26043677` names a company and links to
+// `talent-move.ru/jobs/...-020926-266351/`, while TalentMove's own `tm:266351`
+// has no company at all. The link is the join - a republishing board puts the
+// original posting's id at the tail of the url - so the name is already in the
+// store and costs no request to find.
+//
+// The recovered name is written with its provenance in `company_from`, never
+// silently: a vacancy from a board known for never naming an employer suddenly
+// having one is the kind of fact that has to say where it came from.
+const TRAILING_ID = /-(\d{4,})\/?$/;
+
+/** The originating board's id at the tail of a republished link, if there is one. */
+export const trailingId = (url) => (String(url ?? '').match(TRAILING_ID) || [])[1] || null;
+
+/** `tm:266351` -> `266351`. AgileFluent ids are bare and pass through unchanged. */
+const boardId = (id) => String(id ?? '').replace(/^[a-z0-9]+:/, '');
+
+// A board that writes "unknown" into the company field has not named anybody:
+// AgileFluent does it for 20 of 284 rows. Copying that across would be worse
+// than leaving the field empty - it would build a dup_key of
+// `unknown|backend developer`, and the next unnamed Backend Developer would
+// merge into it, which is the false merge that hides a live vacancy.
+//
+// One entry, because one is what has been observed. A second placeholder is a
+// measurement away, not a guess away.
+const NOT_A_NAME = new Set(['unknown'].map(normKey));
+
+const donorRows = db.prepare(
+  `SELECT id, company, url FROM jobs
+    WHERE source <> ? AND company IS NOT NULL AND url IS NOT NULL AND url LIKE ?
+    ORDER BY first_seen`
+);
+
+/**
+ * The employer another source names for this posting, or null.
+ * Reads the store only: the link between the two records is already stored, and
+ * asking a board again would spend a request to learn what is on disk.
+ */
+export function resolveCompany(job) {
+  const bare = boardId(job.id);
+  if (!/^\d{4,}$/.test(bare)) return null;
+  for (const row of donorRows.all(job.source || 'af', `%-${bare}%`)) {
+    // LIKE narrows; the tail match decides. `%-266351%` also matches a url with
+    // `-266351-` in the middle, which is a different posting.
+    if (trailingId(row.url) !== bare) continue;
+    const name = normKey(row.company);
+    if (!name || NOT_A_NAME.has(name)) continue;
+    return { company: row.company, from: row.id };
+  }
+  return null;
+}
+
+/** The job as stored: its own company, or one derived from another source. */
+function withCompany(job) {
+  if (job.company) return job;
+  const found = resolveCompany(job);
+  if (!found) return job;
+  return { ...job, company: found.company, companyFrom: found.from };
+}
+
+// Backfill, idempotent: rows stored before this existed, and rows whose donor
+// arrived later. The dedup key is written in the same step - it is the point of
+// recovering the name, and a company without a key would leave the two copies
+// of one posting still unable to meet.
+{
+  const unnamed = db.prepare(
+    "SELECT id, source, title FROM jobs WHERE (company IS NULL OR company = '')"
+  ).all();
+  const resolved = [];
+  const setCompany = db.prepare(
+    'UPDATE jobs SET company = ?, company_from = ?, dup_key = ? WHERE id = ?'
+  );
+  for (const row of unnamed) {
+    const found = resolveCompany(row);
+    if (!found) continue;
+    setCompany.run(found.company, found.from, dupKey(found.company, row.title), row.id);
+    resolved.push(`${row.id} <- ${found.from} (${found.company})`);
+  }
+  if (resolved.length) {
+    console.error(`store: employer names recovered from another source: ${resolved.join(', ')}`);
+  }
+}
+
 db.exec('CREATE INDEX IF NOT EXISTS jobs_dup_key ON jobs (dup_key)');
 
 const today = () => new Date().toISOString();
@@ -107,8 +198,8 @@ const today = () => new Date().toISOString();
 const hasSeen = db.prepare('SELECT 1 FROM jobs WHERE id = ?');
 const hasKey = db.prepare('SELECT id FROM jobs WHERE dup_key = ?');
 const insertJob = db.prepare(
-  `INSERT OR IGNORE INTO jobs (id, source, company, title, url, country, salary_label, skills, dup_key, first_seen)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  `INSERT OR IGNORE INTO jobs (id, source, company, title, url, country, salary_label, skills, dup_key, company_from, first_seen)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 );
 const setStatus = db.prepare('UPDATE jobs SET status = ?, note = COALESCE(?, note) WHERE id = ?');
 const insertRun = db.prepare(
@@ -117,24 +208,63 @@ const insertRun = db.prepare(
 );
 
 // Return only the jobs not seen before; record the fresh ones as seen ('new').
+//
+// What was skipped travels with the answer, on the array, the way an adapter
+// hangs its caveats on what it returns. A cross-board merge was the one thing
+// here that happened in complete silence: the whole point of one store is that
+// the second board's copy of a posting does not come back, and nothing said it
+// had ever happened. `seen` is this board offering the same id again, `merged`
+// is another board's copy of a posting already stored, and the two say very
+// different things about a run.
 export function filterFresh(jobs) {
   const fresh = [];
-  for (const job of jobs) {
-    if (hasSeen.get(job.id)) continue;
+  const skipped = { seen: 0, merged: [] };
+  for (const incoming of jobs) {
+    if (hasSeen.get(incoming.id)) { skipped.seen += 1; continue; }
+    // An unnamed employer is looked up in the store before the key is built:
+    // company + title is the key, so a name recovered here is what lets the two
+    // boards' copies of one posting meet at all.
+    const job = withCompany(incoming);
     // The same posting under the other board's id. Skipped without touching the
     // row that is already there: it may carry a status somebody set by hand.
     const key = dupKey(job.company, job.title);
-    if (key && hasKey.get(key)) continue;
+    const already = key && hasKey.get(key);
+    if (already) {
+      skipped.merged.push({ id: job.id, into: already.id });
+      continue;
+    }
     fresh.push(job);
     insertJob.run(
       job.id, job.source || 'af', job.company, job.title, job.url, job.country,
-      job.salaryLabel, (job.skills || []).join(', ') || null, key, today()
+      job.salaryLabel, (job.skills || []).join(', ') || null, key,
+      job.companyFrom ?? null, today()
     );
   }
+  fresh.skipped = skipped;
   return fresh;
 }
 
-export function logRun(source, preset, since, found, fresh, requests = null) {
+/**
+ * How many HTTP requests a finished run cost. Never optional: the count is the
+ * only view anybody has of a budget the board meters in silence, and a run that
+ * did not record one used to land as NULL - indistinguishable from the rows
+ * written before the column existed, and invisible inside a sum. Three
+ * TalentMove runs sat in the log that way while the board was the one whose
+ * refusal costs a paid session.
+ *
+ * A run reaches this line only after a board answered it, so the floor is one:
+ * zero means the counter, not the board.
+ */
+export function assertRequestsCounted(source, requests) {
+  if (Number.isInteger(requests) && requests > 0) return;
+  throw new Error(`store: the run on ${source} finished without a request count `
+    + `(${requests}). Every run costs at least one request, so this is the `
+    + 'counter failing, not a free run - and an uncounted run makes the budget '
+    + 'in jobs_stats read lower than what was actually spent');
+}
+
+export function logRun(source, preset, since, found, fresh, requests) {
+  assertRequestsCounted(source, requests);
   insertRun.run(today(), source, preset, since, found, fresh, requests);
 }
 

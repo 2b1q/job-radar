@@ -83,7 +83,12 @@ function parseCard(card) {
   return {
     id: `tm:${id}`,
     source: 'tm',
-    company: company ? strip(company[1]).replace(/^@/, '') : null,
+    // `@` and then the name, but the name is sometimes wrapped in a tag and
+    // stripping that tag leaves a space where it was - so the handle marker
+    // takes the whitespace behind it with it. " AlphaCo" and "AlphaCo" are one
+    // employer; only `normKey` was hiding the difference, and the store is not
+    // the place to clean up a board's punctuation.
+    company: company ? strip(company[1]).replace(/^@\s*/, '') || null : null,
     title: strip(link[2]),
     url,
     country: location ? strip(location[2]) : null,

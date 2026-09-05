@@ -111,3 +111,20 @@ test('one broken card does not lose the others', () => {
   const broken = '<article class="card-job">no link at all</article>' + envelope.html;
   assert.equal(parseCards(broken, envelope.found_posts).length, jobs.length);
 });
+
+test('a company wrapped in a tag does not arrive with a space in front', () => {
+  // What the board actually sends for some employers: the name inside a link.
+  // `strip` turns the tag into a space, and removing only the `@` left a value
+  // with a space in front of the name. The keys survived it - see
+  // store-dedup - but the value a human reads should not have to.
+  const wrapped = envelope.html.replaceAll(
+    '>@ExampleCo<', '>@<a href="/company/exampleco">ExampleCo</a><');
+  const [first] = parseCards(wrapped, envelope.found_posts);
+  assert.equal(first.company, 'ExampleCo');
+});
+
+test('a company that is only a handle marker is no company', () => {
+  const empty = envelope.html.replaceAll('>@ExampleCo<', '>@<');
+  const [first] = parseCards(empty, envelope.found_posts);
+  assert.equal(first.company, null, 'an empty string is not a name');
+});

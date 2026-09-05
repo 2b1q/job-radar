@@ -24,7 +24,7 @@ and remember what was done with it**. The store is the core; adapters are replac
 | Install | `pnpm install` |
 | Run MCP | `node --experimental-sqlite server.mjs` |
 | Tests | `pnpm test` (`node --test`; the flag is in `package.json`) |
-| Smoke, one board | `node smoke.mjs af` · `TM_COOKIE=... node smoke.mjs tm` · `node smoke.mjs w3` |
+| Smoke, one board | `node smoke.mjs af` · `TM_COOKIE=... node smoke.mjs tm [category]` · `node smoke.mjs w3 [tag]` (both fall back to what the profile names for THAT board) |
 | Store state | `node --experimental-sqlite -e "import('./store.mjs').then(s=>console.log(s.stats()))"` |
 
 Check `package.json` before guessing a command. Run tests only when asked.
@@ -59,7 +59,7 @@ server.mjs        protocol glue only. Adding a board = one line in SOURCES
 params.mjs        query -> board parameters, plus local validation of values the board accepts silently
 adapters/*.mjs    ONE board each: its transport dialect and its parsing. Nothing else
 adapters/_shared/ everything every adapter needs and none of them owns
-store.mjs         SQLite: seen ids, dup_key, statuses, run log, request budget
+store.mjs         SQLite: seen ids, dup_key, derived employer, statuses, run log, request budget
 ```
 
 **An adapter translates one board into the shared shape. That is its whole job.** Throttling,

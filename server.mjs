@@ -17,7 +17,7 @@ import * as store from './store.mjs';
 // Dynamic, so a missing or broken profile reaches the operator as one line
 // rather than as a module-loading stack trace on a transport nobody is reading
 // yet.
-const { afFilters, resolveTags, tmParams } = await import('./params.mjs')
+const { SOURCE_CODES, afFilters, resolveTags, tmParams, w3Tag } = await import('./params.mjs')
   .catch((err) => {
     console.error(`job-radar: ${err.message}`);
     process.exit(2);
@@ -30,7 +30,7 @@ const json = (obj) => ({ content: [{ type: 'text', text: JSON.stringify(obj, nul
 // The server name is the project; the tool names are not - see CLAUDE.md.
 const server = new McpServer({ name: 'job-radar', version: '2.0.0' });
 
-const sourceSchema = z.enum(['af', 'tm', 'w3']);
+const sourceSchema = z.enum(SOURCE_CODES);
 const presetSchema = z.enum(['remote', 'ruroots', 'countries', 'anywhere']);
 const sinceSchema = z.enum(['24h', '3d', 'week', '2w', 'month']);
 
@@ -38,7 +38,7 @@ server.registerTool(
   'jobs_count',
   {
     title: 'Count matching jobs',
-    description: 'Quick count for one board. source: af (AgileFluent), tm (TalentMove) or w3 (web3.career). AgileFluent presets: remote, ruroots (russian-roots companies), countries (the relocation list from the active profile), anywhere. TalentMove takes an optional category taxonomy id and skills (slugs from search-skills, comma separated or an array). web3.career ignores presets: it is addressed by tag page, so pass the tag slug as skills.',
+    description: 'Quick count for one board. source: af (AgileFluent), tm (TalentMove) or w3 (web3.career). AgileFluent presets: remote, ruroots (russian-roots companies), countries (the relocation list from the active profile), anywhere. TalentMove takes an optional category taxonomy id and skills (slugs from search-skills, comma separated or an array). web3.career ignores presets: it is addressed by tag page, so pass the tag slug as skills. The slugs belong to this board alone; the profile keeps them under skills.w3.',
     inputSchema: {
       source: sourceSchema.optional(),
       preset: presetSchema.optional(),
@@ -54,9 +54,7 @@ server.registerTool(
     const board = SOURCES[source];
     board.beginCall(`jobs_count on ${source}`);
     try {
-      if (source === 'w3') {
-        return json({ source, ...(await web3career.count({ tag: Array.isArray(skills) ? skills[0] : (skills || null) })) });
-      }
+      if (source === 'w3') return json({ source, ...(await web3career.count({ tag: w3Tag(skills) })) });
       if (source === 'tm') return json({ source, ...(await talentmove.count(tmParams({ preset, category, skills, date }))) });
       const total = await agilefluent.count(afFilters({ preset, since }));
       return json({ source, preset, since, totalCount: total });
@@ -85,8 +83,19 @@ async function tmSearch({ preset, category, skills, date, requireTags, pages }) 
   // One group is not an intersection: ask the board once and be done, rather
   // than paying for the same query twice to intersect it with itself.
   if (!language.length) {
-    const { slugs } = await talentmove.skillSlugs(wanted, params.category);
-    return talentmove.search({ ...params, skills: slugs.join(',') }, pages);
+    const { slugs, unresolved } = await talentmove.skillSlugs(wanted, params.category);
+    // Same refusal as searchIntersect: an empty `skills=` is an unknown value to
+    // this board, and it answers zero - which reads as "no such job" rather than
+    // "none of those tags exists here".
+    if (!slugs.length) throw new Error(`tm: none of [${wanted.join(', ')}] is a `
+      + `known skill in category ${params.category} - the query would fall back `
+      + 'to the whole category and look like a result');
+    const jobs = await talentmove.search({ ...params, skills: slugs.join(',') }, pages);
+    // The half the board could not resolve travels with the answer. It used to
+    // be dropped here, and a query silently narrowed to the tags that happened
+    // to resolve is the wrong answer wearing the right shape.
+    if (unresolved.length) jobs.unresolvedSkills = unresolved;
+    return jobs;
   }
   return talentmove.searchIntersect(params, [language, wanted], pages);
 }
@@ -95,7 +104,7 @@ server.registerTool(
   'jobs_search',
   {
     title: 'Search jobs',
-    description: 'Search a board and return jobs with real apply URLs. By default returns only jobs never seen before and records them as seen; dedup is shared across boards, so a posting republished on several surfaces once. source: af (AgileFluent), tm (TalentMove) or w3 (web3.career, addressed by tag page - pass the tag slug as skills). Set onlyNew=false to see everything, dryRun=true to not record. TalentMove and web3.career fill the skills field, AgileFluent usually leaves it empty. In the answer, found is the board own total where it states one and collected is what was fetched; complete=false means a page loop stopped short and the result is a lower bound.',
+    description: 'Search a board and return jobs with real apply URLs. By default returns only jobs never seen before and records them as seen; dedup is shared across boards, so a posting republished on several surfaces once. source: af (AgileFluent), tm (TalentMove) or w3 (web3.career, addressed by tag page - pass the tag slug as skills, which belong to this board alone). Set onlyNew=false to see everything, dryRun=true to not record. TalentMove and web3.career fill the skills field, AgileFluent usually leaves it empty. In the answer, found is the board own total where it states one and collected is what was fetched; complete=false means a page loop stopped short and the result is a lower bound. skipped says why the answer is shorter than what was collected: seen is this board offering the same id again, merged lists postings already stored under another board id.',
     inputSchema: {
       source: sourceSchema.optional(),
       preset: presetSchema.optional(),
@@ -121,12 +130,16 @@ server.registerTool(
     // web3.career takes a listing slug rather than presets: its own taxonomy is
     // the tag page, and `skills` is where the caller names it.
     const all = source === 'w3'
-      ? await web3career.search({ tag: Array.isArray(skills) ? skills[0] : (skills || null) }, pages)
+      ? await web3career.search({ tag: w3Tag(skills) }, pages)
       : source === 'tm'
         ? await tmSearch({ preset, category, skills, date, requireTags, pages })
         : await agilefluent.search(afFilters({ preset, since, query, minSalary }), pages);
     const requests = board.requestCount() - before;
     board.endCall();
+    // Checked before anything is written: `filterFresh` marks what it stores as
+    // seen, so failing after it would swallow this run's jobs - they would never
+    // be returned and never come back as new either.
+    store.assertRequestsCounted(source, requests);
 
     // Sorting by a key half the corpus does not have is worse than not sorting:
     // records sink because their board omits the number, not because they pay
@@ -152,6 +165,11 @@ server.registerTool(
     for (const key of ['complete', 'sides', 'tagLookups', 'unresolvedSkills']) {
       if (all[key] !== undefined) meta[key] = all[key];
     }
+    // Why the answer is shorter than what was collected. `merged` is the second
+    // board's copy of a posting already stored, which is the one thing the store
+    // used to do without saying so - and the only measure of what a second
+    // adapter is actually adding.
+    if (jobs.skipped) meta.skipped = jobs.skipped;
 
     return json({ source, preset, since,
                   found: all.found ?? all.length, collected: all.length,

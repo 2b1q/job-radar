@@ -70,6 +70,26 @@ function decodeJobUrl(token) {
   } catch { return null; }
 }
 
+// The board puts the posting's own minimum into `salaryMinUsd` whatever currency
+// the posting quotes: `JPY8010–16000k / год` arrives as 8010000, and a sort by
+// money then ranks yen above dollars. The currency is stated in the label and
+// nowhere else, so the label is what decides.
+//
+// Not converted, and not kept with a caveat: a number in a field called
+// salaryMinUsd is USD or it is nothing. The figure is not lost - the label
+// carries it, in the currency it was written in - which is the same bargain the
+// other two adapters strike, one quoting roubles and the other only filling the
+// field when the board says USD.
+const USD_LABEL = /^\s*(?:\$|USD\b)/;
+
+/** The board's minimum, kept only where the board is quoting USD. */
+export function usdMin(salaryLabel, salaryMinUsd) {
+  if (salaryMinUsd == null) return null;
+  // No label is no currency. A bare number could be any of the eleven this board
+  // has been seen to quote, and USD is a guess, not a default.
+  return USD_LABEL.test(String(salaryLabel ?? '')) ? salaryMinUsd : null;
+}
+
 // Normalize a raw API job into the compact shape we expose and store.
 function normalize(job) {
   return {
@@ -84,7 +104,7 @@ function normalize(job) {
     country: job.country,
     format: job.format,
     salaryLabel: job.salaryLabel,
-    salaryMinUsd: job.salaryMinUsd ?? null,
+    salaryMinUsd: usdMin(job.salaryLabel, job.salaryMinUsd ?? null),
     hasRussianRoots: !!job.hasRussianRoots,
     visa: !!job.visa,
     skills: Array.isArray(job.skills) ? job.skills : [],

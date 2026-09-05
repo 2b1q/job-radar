@@ -66,7 +66,9 @@ test('the same posting under the other board id is not fresh', () => {
     id: 'tm:266351', company: 'GammaCo',
     title: 'Lead/Senior Backend Developer, TypeScript/Node.js',
   })]);
-  assert.deepEqual(fresh, [], 'the tm copy of an af posting must not come back');
+  assert.equal(fresh.length, 0, 'the tm copy of an af posting must not come back');
+  assert.deepEqual(fresh.skipped.merged, [{ id: 'tm:266351', into: '26043677' }],
+                   'and the answer says which row it merged into');
 });
 
 test('and the status somebody set by hand is left alone', () => {
@@ -85,7 +87,7 @@ test('punctuation and case do not decide identity', () => {
     id: 'tm:999001', company: '  gammaco ',
     title: 'Lead / Senior  Backend Developer,  TypeScript/Node.js',
   })]);
-  assert.deepEqual(fresh, [], 'normalisation is what makes the two ids meet');
+  assert.equal(fresh.length, 0, 'normalisation is what makes the two ids meet');
 });
 
 test('same title at different companies stays two vacancies', () => {
@@ -109,8 +111,10 @@ test('a title alone never merges anything', () => {
 });
 
 test('an exact id repeat is still caught', () => {
-  assert.deepEqual(store.filterFresh([job({ id: 'tm:100', company: 'AlphaCo',
-                                            title: 'Backend Engineer' })]), []);
+  const again = store.filterFresh([job({ id: 'tm:100', company: 'AlphaCo',
+                                         title: 'Backend Engineer' })]);
+  assert.equal(again.length, 0);
+  assert.equal(again.skipped.seen, 1, 'the same id again, not another board');
 });
 
 test('dupKey is exact, not fuzzy', () => {
@@ -151,5 +155,24 @@ test('an entity-bearing duplicate is caught at insert', () => {
   const again = store.filterFresh([
     job({ id: 'w3:700', company: 'EntityCo', title: 'Backend &amp; Data' }),
   ]);
-  assert.deepEqual(again, [], 'the escaped copy is the same posting');
+  assert.equal(again.length, 0, 'the escaped copy is the same posting');
+});
+
+test('a leading space is not a different company', () => {
+  // Measured rather than read off `normKey`: TalentMove hands the store
+  // " DeltaCo" for what another board calls "DeltaCo" - the employer is rendered
+  // as `@<a>DeltaCo</a>` and stripping the tag leaves a space behind the `@`. Whether
+  // that splits one posting into two is decided here, in the key itself, and
+  // nowhere else.
+  assert.equal(store.dupKey(' DeltaCo', 'Backend Developer'),
+               store.dupKey('DeltaCo', 'Backend Developer'));
+  assert.equal(store.dupKey(' Sigma Labs', 'Backend Developer'),
+               store.dupKey('Sigma Labs', 'Backend Developer'));
+});
+
+test('and the two copies meet at insert, not only in the key', () => {
+  store.filterFresh([job({ id: 'tm:800', company: ' DeltaCo', title: 'Backend Developer' })]);
+  assert.equal(store.filterFresh([
+    job({ id: 'w3:800', company: 'DeltaCo', title: 'Backend Developer' }),
+  ]).length, 0, 'the space never reached the comparison');
 });

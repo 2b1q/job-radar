@@ -60,6 +60,44 @@ some rate would invent a number that somebody would later quote as real.
 many records lack one and sit at the end. A sort on a key half the corpus does
 not have is worse than no sort, because records sink for the wrong reason.
 
+## The slug is not derivable, and a wrong one fails the whole call
+
+`/{tag}-jobs` is the address, and the tag is the board's own spelling of a
+technology. Re-measured: `/typescript-jobs` answers 200, `/node-jobs` answers
+200, `/node-js-jobs` redirects to `/404`, which answers 200 with no rows on it.
+(The redirect was a 302 when the board was first mapped and is a 301 now; the
+destination is what matters.)
+
+Measured across one ingest, `/{tag}-jobs` for `node`, `typescript`, `backend`,
+`defi`, `evm` and `solana` all answer with rows; **`payments` does not exist** and
+redirects to `/404` like the rest. There is no rule in which of those the board
+has: `defi` and `evm` are listings while `payments` is not, and nothing about the
+words says so.
+
+That matters more than a 404 usually would, because a profile's `skills` are
+board tag slugs and the same technology is spelled differently on each board. A
+profile whose first skill is `node-js` — a perfectly good slug elsewhere — makes
+every web3.career call raise
+
+    w3: /node-js-jobs?page=1 does not exist - tag slugs are not derivable,
+    check the listing links on the site
+
+and a raised call stores nothing and logs no run. That is the adapter behaving
+correctly: the alternative is a page of nothing read as an empty niche.
+
+That is a configuration mistake, so it is now refused as one: `skills` in a
+profile is per board, and a slug this profile wrote for another board is turned
+down by name before the request goes out. What cannot be checked locally is
+whether this board HAS a given slug - `payments` above is the case, and a
+whitelist of the ones it does have would go stale the day a tag is added.
+
+It is one sufficient explanation for a store that held 284 AgileFluent rows, 61
+TalentMove rows and no web3.career row at all while the adapter was written,
+tested and working. The run log cannot tell it from the other one: a `dryRun`
+search writes no run either, and there was no web3.career run of any kind to
+read. Both were reproduced — the slug above raises, and the first run with a slug
+this board knows put 30 rows in the store for 2 requests.
+
 ## Listing tags are truncated here too
 
 The same defect as the other board, with a tighter cut: a listing row carries
