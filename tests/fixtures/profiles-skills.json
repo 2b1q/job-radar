@@ -11,7 +11,11 @@
     "perboard": {
       "roles": ["Backend Engineer"],
       "grades": ["senior"],
-      "skills": { "default": ["node-js", "typescript"], "w3": ["node", "typescript"] }
+      "skills": {
+        "default": ["node-js", "typescript"],
+        "w3": ["node", "typescript"],
+        "sol": ["rust", "solana"]
+      }
     },
     "sharedlist": {
       "roles": ["Backend Engineer"],

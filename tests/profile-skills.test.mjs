@@ -78,13 +78,46 @@ test('an unknown slug nobody claimed is passed through', async () => {
   // The profile is a vocabulary somebody cares about, not the board's dictionary.
   // Refusing everything outside it would make trying a new tag impossible.
   const { w3Tag, tmParams } = await load('perboard');
-  assert.equal(w3Tag('solana'), 'solana');
-  assert.equal(tmParams({ skills: 'rust' }).skills, 'rust');
+  assert.equal(w3Tag('golang'), 'golang');
+  assert.equal(tmParams({ skills: 'kubernetes' }).skills, 'kubernetes');
 });
 
 test('with one shared list there is no other board to belong to', async () => {
   const { w3Tag } = await load('sharedlist');
   assert.equal(w3Tag('node-js'), 'node-js', 'the profile has not said the boards differ');
+});
+
+test('jobs.solana.com takes one term, and says which it did not use', async () => {
+  // Its search narrows with every word - "rust" 76, "typescript" 69, "rust
+  // solana" 62 - so a stack cannot be sent as one query. The first term is the
+  // question asked; the rest come back in the answer rather than vanishing.
+  const { solParams } = await load('perboard');
+  assert.deepEqual(solParams({ preset: 'remote', skills: ['rust', 'solana'] }),
+                   { workMode: 'remote', query: 'rust', ignored: ['solana'] });
+});
+
+test('an explicit query wins over the profile, and the profile is reported', async () => {
+  const { solParams } = await load('perboard');
+  const p = solParams({ preset: 'anywhere', query: 'validator', skills: ['rust'] });
+  assert.equal(p.query, 'validator');
+  assert.deepEqual(p.ignored, ['rust']);
+  assert.equal(p.workMode, undefined, 'anywhere is both work modes, not a filter');
+});
+
+test('the presets this board cannot express are empty, not approximated', async () => {
+  // `locations` is accepted and dropped by the API - the answer is the
+  // unfiltered total - so a country preset here would be a filter that filters
+  // nothing while looking like one.
+  const { solParams } = await load('perboard');
+  assert.equal(solParams({ preset: 'countries', skills: [] }).workMode, undefined);
+  assert.equal(solParams({ preset: 'ruroots', skills: [] }).workMode, undefined);
+  assert.equal(solParams({ preset: 'remote', skills: [] }).workMode, 'remote');
+});
+
+test("and it refuses another board's word too", async () => {
+  const { solParams } = await load('perboard');
+  assert.throws(() => solParams({ skills: ['node-js'] }), /slug for another board/);
+  assert.throws(() => solParams({ skills: ['node'] }), /slug for another board/);
 });
 
 test('a source key nobody reads is refused at load', async () => {

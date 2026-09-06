@@ -56,7 +56,7 @@ const RELOCATION_COUNTRIES = PROFILE.relocationCountries || [];
  * The boards this server speaks to. Kept here rather than in `server.mjs`
  * because the profile is validated against it before any adapter is wired up.
  */
-export const SOURCE_CODES = ['af', 'tm', 'w3'];
+export const SOURCE_CODES = ['af', 'tm', 'w3', 'sol'];
 
 /** One list of slugs, checked entry by entry. */
 function skillList(value, where, file) {
@@ -252,6 +252,39 @@ export function w3Tag(skills) {
   if (!slug) return null;   // no tag is the whole board, which is a real query
   assertBoardSkills('w3', [slug]);
   return slug;
+}
+
+// jobs.solana.com narrows by work mode and by free text, and by nothing else
+// this repository can use. Two presets are stubs and that is a measurement, not
+// a gap: `locations` is accepted and dropped by the API - the answer comes back
+// as the unfiltered total - and nothing in it expresses hiring through an EOR.
+// The country cut therefore happens downstream, on each record's own location,
+// which is also the field this board is least to be believed about.
+const SOL_PRESETS = {
+  remote: { workMode: 'remote' },
+  anywhere: {},                 // both work modes, which is the board's default
+  countries: {},                // stub: no location filter exists here
+  ruroots: {},                  // stub: the board has no such dimension
+};
+
+/**
+ * jobs.solana.com is addressed by free text, and the text narrows with every
+ * word added - "rust" 76, "typescript" 69, "rust solana" 62 - so it takes ONE
+ * term. An explicit `query` wins over the profile's vocabulary; whatever is left
+ * over is reported rather than quietly dropped, because a query narrowed to the
+ * first word of a list is a different question from the one that was asked.
+ */
+export function solParams({ preset = 'remote', query, skills }) {
+  const list = (Array.isArray(skills) ? skills : String(skills ?? '').split(','))
+    .map((s) => s.trim()).filter(Boolean);
+  assertBoardSkills('sol', list);
+  const term = query ? String(query).trim() : (list[0] || '');
+  return {
+    ...SOL_PRESETS[preset],
+    query: term,
+    // Everything the board was not asked about, so the caller can see it.
+    ignored: query ? list : list.slice(1),
+  };
 }
 
 /**

@@ -122,3 +122,27 @@ a *seventh* copy out.
 One of the six is a pair the key could only see after the employer was recovered
 from the other board — the recovery worked, and the two rows are now known to be
 one posting.
+
+## The key on a third pair of boards
+
+A fourth source, read whole: 411 records collected, **342 stored, 69 merged into
+a row that was already there, 0 unexplained.** Which is also the first test of
+`dup_key` on a pair of boards it was not built against.
+
+| merged into | postings |
+|---|---|
+| web3.career | 53 |
+| AgileFluent | 1 |
+| the same board, under a second id | 15 |
+
+The 53 are the two boards carrying the same startup listings, and they merged on
+exactly the key the design expects — normalised company plus title, no fuzz, both
+boards spelling the posting the same way because both copied it from the same ATS.
+It is a much higher hit rate than the 1-in-60 measured between the boards that
+translate their titles, and the reason is the same one: **the key survives
+republication and does not survive translation.**
+
+The 15 self-merges are the board republishing its own postings under a second id
+- a company relisting, and `count: 411` includes both copies. The id index cannot
+see those; the key can, which is the first time the second key has earned its
+keep inside one source rather than across two.

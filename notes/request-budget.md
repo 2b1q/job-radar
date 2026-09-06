@@ -64,6 +64,25 @@ Current timings, and the ceiling:
 | `tm` | 5000 ms | 4000 ms | the paid session lives here |
 | `af` | 3500 ms | 2500 ms | |
 | `w3` | 3500 ms | 2500 ms | |
+| `sol` | 3500 ms | 2500 ms | a JSON API with no observed limit, kept at the pace of the other public board rather than at the pace it would tolerate |
+
+### What jobs.solana.com cost to add
+
+76 requests in one afternoon, no refusal at any point — including 39 inside
+twenty minutes while the filters were being mapped, which is the window that
+exhausted a different board's patience.
+
+| | requests |
+|---|---|
+| reconnaissance: robots, the page, the API shape, paging edges, filter tolerance | 34 |
+| the first ingest: the whole board, 21 pages of 20 | 21 |
+| a second read in `dryRun` to classify every record against the store | 21 |
+
+A page is 20 records and `hitsPerPage` is ignored, so a full read is always 21
+requests. **That takes about 95 seconds at this pace, and a default MCP client
+gives up at 60.** The run still finishes and still lands in the store — the
+client simply never sees the answer, which is how one ingest here produced 342
+rows and no visible result. Fewer pages per call, or a longer client timeout.
 
 `MAX_REQUESTS_PER_CALL = 40` bounds one tool call across every page, slug lookup
 and enrichment it makes. Hitting it **throws**: a call that returns what it

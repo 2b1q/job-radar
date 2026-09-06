@@ -91,7 +91,11 @@ function parseCard(card) {
     company: company ? strip(company[1]).replace(/^@\s*/, '') || null : null,
     title: strip(link[2]),
     url,
+    // The apply button opens a signup popup, so the link reaches the board and
+    // stops there.
+    applyAtEmployer: false,
     country: location ? strip(location[2]) : null,
+    locationVerified: false,
     format: format ? strip(format[2]) : null,
     salaryLabel: amount ? `${amount} RUB/mo (${kind === 'verified' ? 'from posting' : 'site estimate'})` : 'not stated',
     salaryKind: kind,

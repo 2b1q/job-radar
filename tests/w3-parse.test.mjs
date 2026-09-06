@@ -35,10 +35,19 @@ test('ids are namespaced to the board', () => {
 test('the shape matches the other adapters exactly', () => {
   // The store and the tools are shared; an extra or missing field here means
   // touching them, which is the thing the common shape exists to avoid.
-  const expected = ['id', 'source', 'company', 'title', 'url', 'country', 'format',
-                    'salaryLabel', 'salaryMinUsd', 'salaryEstimated', 'skills',
-                    'hasRussianRoots', 'visa', 'date'];
+  const expected = ['id', 'source', 'company', 'title', 'url', 'applyAtEmployer',
+                    'country', 'locationVerified', 'format', 'salaryLabel',
+                    'salaryMinUsd', 'salaryEstimated', 'skills', 'hasRussianRoots',
+                    'visa', 'date'];
   assert.deepEqual(Object.keys(jobs[0]).sort(), [...expected].sort());
+});
+
+test('this board never reaches the employer, and the record says so', () => {
+  // Not a defect of the adapter but a fact about the board: every /i/ apply link
+  // redirects to its own page and the employer sits behind a signup, so a
+  // company found here has to be identified by name first. This field is what
+  // makes that cost visible before the click rather than after it.
+  for (const j of jobs) assert.equal(j.applyAtEmployer, false);
 });
 
 test('the structured title wins over the mangled one', () => {

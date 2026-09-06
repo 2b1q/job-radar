@@ -11,19 +11,20 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 
 import * as agilefluent from './adapters/agilefluent.mjs';
+import * as solana from './adapters/solana.mjs';
 import * as talentmove from './adapters/talentmove.mjs';
 import * as web3career from './adapters/web3career.mjs';
 import * as store from './store.mjs';
 // Dynamic, so a missing or broken profile reaches the operator as one line
 // rather than as a module-loading stack trace on a transport nobody is reading
 // yet.
-const { SOURCE_CODES, afFilters, resolveTags, tmParams, w3Tag } = await import('./params.mjs')
+const { SOURCE_CODES, afFilters, resolveTags, solParams, tmParams, w3Tag } = await import('./params.mjs')
   .catch((err) => {
     console.error(`job-radar: ${err.message}`);
     process.exit(2);
   });
 
-const SOURCES = { af: agilefluent, tm: talentmove, w3: web3career };
+const SOURCES = { af: agilefluent, tm: talentmove, w3: web3career, sol: solana };
 
 const json = (obj) => ({ content: [{ type: 'text', text: JSON.stringify(obj, null, 2) }] });
 
@@ -38,7 +39,7 @@ server.registerTool(
   'jobs_count',
   {
     title: 'Count matching jobs',
-    description: 'Quick count for one board. source: af (AgileFluent), tm (TalentMove) or w3 (web3.career). AgileFluent presets: remote, ruroots (russian-roots companies), countries (the relocation list from the active profile), anywhere. TalentMove takes an optional category taxonomy id and skills (slugs from search-skills, comma separated or an array). web3.career ignores presets: it is addressed by tag page, so pass the tag slug as skills. The slugs belong to this board alone; the profile keeps them under skills.w3.',
+    description: 'Quick count for one board. source: af (AgileFluent), tm (TalentMove), w3 (web3.career) or sol (jobs.solana.com). AgileFluent presets: remote, ruroots (russian-roots companies), countries (the relocation list from the active profile), anywhere. TalentMove takes an optional category taxonomy id and skills (slugs from search-skills, comma separated or an array). web3.career ignores presets: it is addressed by tag page, so pass the tag slug as skills. The slugs belong to this board alone; the profile keeps them under skills.w3. jobs.solana.com takes one free-text term - pass it as query or as the first skills entry - plus the remote preset.',
     inputSchema: {
       source: sourceSchema.optional(),
       preset: presetSchema.optional(),
@@ -55,6 +56,13 @@ server.registerTool(
     board.beginCall(`jobs_count on ${source}`);
     try {
       if (source === 'w3') return json({ source, ...(await web3career.count({ tag: w3Tag(skills) })) });
+      if (source === 'sol') {
+        // The same one-term rule as a search, and the same duty to say which
+        // words were not part of the question.
+        const { ignored, ...params } = solParams({ preset, skills });
+        const counted = await solana.count(params);
+        return json({ source, ...counted, ...(ignored.length ? { ignoredSkills: ignored } : {}) });
+      }
       if (source === 'tm') return json({ source, ...(await talentmove.count(tmParams({ preset, category, skills, date }))) });
       const total = await agilefluent.count(afFilters({ preset, since }));
       return json({ source, preset, since, totalCount: total });
@@ -100,11 +108,22 @@ async function tmSearch({ preset, category, skills, date, requireTags, pages }) 
   return talentmove.searchIntersect(params, [language, wanted], pages);
 }
 
+// jobs.solana.com takes one search term and a work mode, and nothing else this
+// tool offers reaches it: it has no date filter under any name tried, and its
+// location filter is accepted and dropped. Whatever the caller named beyond the
+// one term travels back in the answer rather than disappearing.
+async function solSearch({ preset, query, skills, pages }) {
+  const { ignored, ...params } = solParams({ preset, query, skills });
+  const jobs = await solana.search(params, pages);
+  if (ignored.length) jobs.ignoredSkills = ignored;
+  return jobs;
+}
+
 server.registerTool(
   'jobs_search',
   {
     title: 'Search jobs',
-    description: 'Search a board and return jobs with real apply URLs. By default returns only jobs never seen before and records them as seen; dedup is shared across boards, so a posting republished on several surfaces once. source: af (AgileFluent), tm (TalentMove) or w3 (web3.career, addressed by tag page - pass the tag slug as skills, which belong to this board alone). Set onlyNew=false to see everything, dryRun=true to not record. TalentMove and web3.career fill the skills field, AgileFluent usually leaves it empty. In the answer, found is the board own total where it states one and collected is what was fetched; complete=false means a page loop stopped short and the result is a lower bound. skipped says why the answer is shorter than what was collected: seen is this board offering the same id again, merged lists postings already stored under another board id.',
+    description: 'Search a board and return jobs with real apply URLs. By default returns only jobs never seen before and records them as seen; dedup is shared across boards, so a posting republished on several surfaces once. source: af (AgileFluent), tm (TalentMove), w3 (web3.career, addressed by tag page - pass the tag slug as skills, which belong to this board alone) or sol (jobs.solana.com, one free-text term as query or the first skills entry; it has no date filter, so since is not applied there). Set onlyNew=false to see everything, dryRun=true to not record. TalentMove and web3.career fill the skills field, AgileFluent usually leaves it empty. In the answer, found is the board own total where it states one and collected is what was fetched; complete=false means a page loop stopped short and the result is a lower bound. skipped says why the answer is shorter than what was collected: seen is this board offering the same id again, merged lists postings already stored under another board id. applyAtEmployer says whether a job url opens the employer own application (sol) or only the board (w3, tm); null means nobody checked (af). locationVerified is false everywhere: the location and work mode are what the board states, and three of them have been measured wrong.',
     inputSchema: {
       source: sourceSchema.optional(),
       preset: presetSchema.optional(),
@@ -115,7 +134,10 @@ server.registerTool(
       requireTags: z.union([z.string(), z.array(z.string())]).optional(),
       date: z.enum(['today', '7days', '30days']).optional(),
       minSalary: z.number().min(0).optional(),
-      pages: z.number().min(1).max(10).optional(),
+      // Ten pages is 500 records on one board and 200 on another, and the real
+      // ceiling on a call is MAX_REQUESTS_PER_CALL either way - so this is high
+      // enough to read a small board in one go rather than in three.
+      pages: z.number().min(1).max(25).optional(),
       onlyNew: z.boolean().optional(),
       dryRun: z.boolean().optional(),
     },
@@ -133,7 +155,9 @@ server.registerTool(
       ? await web3career.search({ tag: w3Tag(skills) }, pages)
       : source === 'tm'
         ? await tmSearch({ preset, category, skills, date, requireTags, pages })
-        : await agilefluent.search(afFilters({ preset, since, query, minSalary }), pages);
+        : source === 'sol'
+          ? await solSearch({ preset, query, skills, pages })
+          : await agilefluent.search(afFilters({ preset, since, query, minSalary }), pages);
     const requests = board.requestCount() - before;
     board.endCall();
     // Checked before anything is written: `filterFresh` marks what it stores as
@@ -162,7 +186,7 @@ server.registerTool(
     // the board's own total when it states one, `collected` is what was actually
     // fetched, and the two differing is the whole message.
     const meta = {};
-    for (const key of ['complete', 'sides', 'tagLookups', 'unresolvedSkills']) {
+    for (const key of ['complete', 'sides', 'tagLookups', 'unresolvedSkills', 'ignoredSkills']) {
       if (all[key] !== undefined) meta[key] = all[key];
     }
     // Why the answer is shorter than what was collected. `merged` is the second

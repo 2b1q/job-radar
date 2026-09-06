@@ -156,7 +156,14 @@ export function pair(postings, rows) {
       company: strip(p.hiringOrganization?.name || row.company || '') || null,
       title: strip(p.title || row.title),
       url: row.url,
+      // Never the employer. Every /i/ apply link on this board redirects to its
+      // own page and the employer sits behind a signup, so a company found here
+      // has to be identified by name before it can be reached at all.
+      applyAtEmployer: false,
       country: where,
+      // What the board states, and nothing derived from it: three postings
+      // measured elsewhere said `remote` and meant an office.
+      locationVerified: false,
       format: p.jobLocationType === 'TELECOMMUTE' ? 'remote' : (p.employmentType || null),
       salaryLabel: min
         ? `${Math.round(min / 1000)}K-${Math.round((max || min) / 1000)}K ${currency}/`

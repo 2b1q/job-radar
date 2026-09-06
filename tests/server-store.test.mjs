@@ -72,6 +72,22 @@ test('a web3.career search reaches the store, like the other two boards', async 
   for (const r of stored) assert.match(r.id, /^w3:\d+$/);
 });
 
+test('the fourth board reaches the store too, with its outbound link intact', async () => {
+  // The reason jobs.solana.com is here: the url is the employer's own
+  // application. A record whose link only reaches the board says so instead of
+  // passing the board's own page off as an apply link.
+  const sol = await search({ source: 'sol', pages: 1, skills: 'rust' });
+  assert.equal(sol.collected, 4);
+  assert.equal(sol.returned, 4);
+  assert.equal(rows("SELECT id FROM jobs WHERE source = 'sol'").length, 4);
+
+  const outbound = sol.jobs.filter((j) => j.applyAtEmployer);
+  assert.equal(outbound.length, 3, 'three of the four leave the board');
+  for (const j of outbound) assert.doesNotMatch(j.url, /jobs\.solana\.com/);
+  const boardHosted = sol.jobs.find((j) => !j.applyAtEmployer);
+  assert.match(boardHosted.url, /jobs\.solana\.com/, 'and the fourth is kept, marked');
+});
+
 test('dryRun is the only thing that keeps a board out of the store', async () => {
   // Which is what the empty w3 slice turned out to be. A dry run must leave no
   // row and no run - otherwise the next real run would find its own jobs seen.
@@ -104,7 +120,7 @@ test('every board that stores a run stores what it cost', async () => {
   await search({ source: 'af', pages: 1 });
   await search({ source: 'tm', pages: 1 });
   const runs = rows('SELECT source, requests FROM runs');
-  assert.deepEqual([...new Set(runs.map((r) => r.source))].sort(), ['af', 'tm', 'w3']);
+  assert.deepEqual([...new Set(runs.map((r) => r.source))].sort(), ['af', 'sol', 'tm', 'w3']);
   for (const r of runs) {
     assert.ok(Number.isInteger(r.requests) && r.requests > 0,
               `${r.source} logged a run costing ${r.requests}`);
@@ -121,5 +137,5 @@ test('and the budget adds up to what the runs actually spent', async () => {
   for (const s of stats.requestsLast24h) {
     assert.equal(s.unrecorded, 0, `${s.source} has a run that did not say what it cost`);
   }
-  assert.deepEqual(stats.bySource.map((s) => s.source).sort(), ['af', 'tm', 'w3']);
+  assert.deepEqual(stats.bySource.map((s) => s.source).sort(), ['af', 'sol', 'tm', 'w3']);
 });

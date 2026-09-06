@@ -60,6 +60,15 @@ const tmTwin = JSON.stringify({
 globalThis.fetch = async (input, init = {}) => {
   const url = String(input);
   if (url.includes('web3.career')) return reply(url, read('w3-listing.html'));
+  if (url.includes('api.getro.com')) {
+    // jobs.solana.com pages from zero and reports its own total; page 1 is past
+    // the end of this fixture, which is how the walk is supposed to stop.
+    const { page } = JSON.parse(init.body || '{}');
+    const envelope = JSON.parse(read('sol-search.json'));
+    if (page > 0) envelope.results.jobs = [];
+    envelope.results.count = 4;
+    return reply(url, JSON.stringify(envelope));
+  }
   if (url.includes('/tm/v1/filtered-jobs')) {
     return reply(url, url.includes('skills=twin') ? tmTwin : read('tm-envelope.json'));
   }

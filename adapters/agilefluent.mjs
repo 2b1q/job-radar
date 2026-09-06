@@ -101,7 +101,13 @@ function normalize(job) {
     company: job.companyName,
     title: job.title,
     url: decodeJobUrl(job.url),
+    // Unknown, deliberately. The link this board carries is sometimes an
+    // employer's own ATS and sometimes another aggregator - LinkedIn, or the
+    // other board in this repo - and a host list that decides which is which
+    // would be a guess dressed as a fact. Null is "nobody checked".
+    applyAtEmployer: null,
     country: job.country,
+    locationVerified: false,
     format: job.format,
     salaryLabel: job.salaryLabel,
     salaryMinUsd: usdMin(job.salaryLabel, job.salaryMinUsd ?? null),
