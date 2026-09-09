@@ -72,10 +72,14 @@ descriptions and is not spent.
 
 The three things a human currently opens a posting to read — a work
 authorisation requirement, an office-presence requirement, and which backend
-language the requirements actually name — are only in the posting's own text. A
-board restates a posting; an employer publishes it. So the signals are raised
-where the text is, which today is this source and, of the three providers, the
-two that publish a body.
+language the requirements actually name — are only in the posting's own text. So
+the signals are raised wherever there is text: here, on the two providers of
+three that publish a body, and on AgileFluent, which summarises every posting.
+
+The difference between the two is worth keeping in view. An employer publishes
+the posting; a board summarises it, and a summary keeps an office requirement and
+drops a legal notice — measured, 0 work-authorisation hits over 150 AgileFluent
+records. See [agilefluent.md](agilefluent.md).
 
 Which phrases and which languages matter is configured in the profile, because
 that is one person's search. What is NOT configured is the grammar, because that

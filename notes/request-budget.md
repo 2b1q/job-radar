@@ -91,12 +91,13 @@ one detail endpoint, one repeat.
 A search on `af` costs **one request more than it used to**: `search` opens with
 a `/jobs/count` before it walks the pages. `/jobs/search` states only `hasMore`,
 so without it the answer could say how much was collected and never how much
-there was — and this board's `searchQuery` is a phrase match that narrows to zero
-easily (notes/agilefluent.md). A five-page search goes from 5 requests to 6.
+there was. A five-page search goes from 5 requests to 6.
 
-What could be cut instead: nothing that keeps the pair honest. The alternative
-was to report `found` as the collected count, which is what it did, and which is
-the reading that made a narrowed query look like an empty market.
+That request is now allowed to fail. The board has been measured crashing
+`/jobs/count` while `/jobs/search` answered the same filters, and coupling the
+two took the whole source down for the sake of one number
+(notes/agilefluent.md). A failed count costs its request, reports `found: null`
+with the reason, and the search continues.
 
 ### What jobs.solana.com cost to add
 

@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { search } from '../adapters/agilefluent.mjs';
+import { count, search } from '../adapters/agilefluent.mjs';
 
 // The url field is a JWT whose payload carries the real link; only the payload
 // segment is ever read, so the header and signature are placeholders.
@@ -85,12 +85,39 @@ test('a collected page shorter than the board total is not reported as complete'
   assert.equal(jobs.complete, false);
 });
 
-test('a count envelope without a total is an error, not an absent found', async () => {
+test('a count envelope without a total is an error, and does not stop the search', async () => {
+  // `count` still refuses a envelope with no total. `search` no longer dies of it.
   globalThis.fetch = async (url) => ({
-    ok: true, status: 200,
+    ok: true, status: 200, text: async () => '{}',
     json: async () => (String(url).endsWith('/jobs/count') ? {} : { data: [job(1)], hasMore: false }),
   });
-  await assert.rejects(() => search({ roles: [] }, 1), /answered without a totalCount/);
+  await assert.rejects(() => count({ roles: [] }), /answered without a totalCount/);
+  const jobs = await search({ roles: [] }, 1);
+  assert.equal(jobs.length, 1, 'the pages were still walked');
+  assert.equal(jobs.found, null);
+  assert.match(jobs.foundUnavailable, /totalCount/);
+});
+
+test('a count that fails does not take the search down with it', async () => {
+  // The board has been measured crashing /jobs/count while /jobs/search answered
+  // the same filters normally. Coupling the two killed the whole source.
+  globalThis.fetch = async (url) => (String(url).endsWith('/jobs/count')
+    ? { ok: false, status: 500, text: async () => '<!doctype html><html>...' }
+    : { ok: true, status: 200, text: async () => '', json: async () => ({ data: [job(1), job(2)], hasMore: false }) });
+  const jobs = await search({ roles: ['Whatever Engineer'] }, 1);
+  assert.deepEqual(jobs.map((j) => j.id), ['1', '2']);
+  assert.equal(jobs.found, null, 'the total is missing');
+  assert.equal(jobs.complete, true, 'and the walk still reached the end of the results');
+  assert.match(jobs.foundUnavailable, /jobs\/count/, 'with the endpoint that failed named');
+});
+
+test('an error names the endpoint that failed, and the roles it was sent', async () => {
+  // `/jobs/count -> HTTP 500` alone cannot tell "the board is down" from
+  // "one endpoint is down".
+  globalThis.fetch = async () => ({ ok: false, status: 500, text: async () => '<!doctype html>' });
+  await assert.rejects(() => count({ roles: ['Backend'] }),
+                       /jobs\/count answered HTTP 500.*HTML error page.*Backend/s);
+  await assert.rejects(() => count({ grades: ['senior'] }), /jobs\/count answered HTTP 500/);
 });
 
 test('hasMore false stops the walk before maxPages', async () => {

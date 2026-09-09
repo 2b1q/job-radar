@@ -188,30 +188,14 @@ const TM_PRESETS = {
   ruroots: { format: 'fully-remote' },     // stub: see above
 };
 
-// `searchQuery` is a PHRASE, not a set of keywords, and the difference is the
-// whole reason a query on this board looked broken. The words must be adjacent
-// AND in order, and `node.js` is one token - so "backend node" matches none of
-// the postings "backend node.js" matches, and swapping two words changes the
-// answer. A stack typed as a query is therefore a phrase nobody wrote, and the
-// board answers zero without a word. Counts in notes/agilefluent.md.
-//
-// Refused here rather than sent: a caller who means "these two technologies"
-// gets a sentence explaining what this board would have done with it, instead of
-// an empty answer that reads as an empty market. A phrase that is genuinely
-// wanted is still available - `af.search` reports what the board matched, so a
-// deliberate one can be checked against the board's own total.
+// A multi-word `searchQuery` was refused here as an ordered phrase. Measured on
+// clean filters that was wrong - the zeros were the preset's intersection - so
+// the refusal is gone. notes/agilefluent.md.
 function afFilters({ preset = 'remote', since = 'week', query, minSalary }) {
   const filters = { roles: ROLES, grades: GRADES, since, ...AF_PRESETS[preset] };
-  const phrase = query === undefined || query === null ? '' : String(query).trim();
-  if (phrase) {
-    if (/\s/.test(phrase)) {
-      throw new Error(`af: query is an ordered phrase search on this board, not a `
-        + `list of keywords - "${phrase}" would be matched as consecutive words `
-        + 'and answered with a silent zero. Pass one term, or narrow with '
-        + 'preset, since and minSalary instead');
-    }
-    filters.searchQuery = phrase.slice(0, 255);
-  }
+  // `" "` is not a query; the board's schema caps the field at 255.
+  const term = query === undefined || query === null ? '' : String(query).trim();
+  if (term) filters.searchQuery = term.slice(0, 255);
   if (minSalary) filters.salary_min = Number(minSalary);
   return filters;
 }

@@ -3,12 +3,14 @@
 
 import { createHttp, LANGS, pick, USER_AGENTS } from './_shared/http.mjs';
 import { pageRepeatGuard } from './_shared/guards.mjs';
+import { detectSignals, signalNote } from './_shared/signals.mjs';
 
 const BASE = 'https://jobboard.agilefluent.ru/api';
 const ORIGIN = 'https://jobboard.agilefluent.ru';
 // Search vocabulary discovered from the site's own zod schema.
 export const GRADES = ['intern', 'junior', 'middle', 'senior', 'lead']; // "principal" crashes their API (500)
 export const SINCE = ['24h', '3d', 'week', '2w', 'month'];
+const PAGE_SIZE = 50;
 
 // Its own timings: this board has answered 429 under load, which the shared
 // helper cannot know for it.
@@ -42,6 +44,21 @@ function browserHeaders() {
   return headers;
 }
 
+// An unrecognised role crashes /jobs/count and not /jobs/search - the board
+// falling over, not refusing. Measurements in notes/agilefluent.md.
+function failed(path, status, body, text) {
+  const page = text.trim().startsWith('<') ? ' (an HTML error page, not JSON)' : '';
+  const roles = body?.filters?.roles;
+  if (status === 500 && Array.isArray(roles) && roles.length) {
+    return new Error(`af: ${path} answered HTTP 500${page}. This endpoint crashes `
+      + 'on a role it does not have, and the board publishes no list of the ones '
+      + `it does. Roles sent: [${roles.join(', ')}]. /jobs/search answers the same `
+      + 'filters, so a search still works and only the total is lost - drop or '
+      + 'correct a role in the profile to get it back');
+  }
+  return new Error(`af: ${path} answered HTTP ${status}${page}`);
+}
+
 async function post(path, body) {
   for (let attempt = 0; attempt < 2; attempt++) {
     http.countRequest();
@@ -51,10 +68,12 @@ async function post(path, body) {
       body: JSON.stringify(body),
     });
     if (res.status === 429) { await new Promise((r) => setTimeout(r, 65_000)); continue; }
-    if (!res.ok) throw new Error(`${path} -> HTTP ${res.status}`);
+    // Which endpoint answered is half the diagnosis: one has been seen crashing
+    // while the other was healthy.
+    if (!res.ok) throw failed(path, res.status, body, await res.text().catch(() => ''));
     return res.json();
   }
-  throw new Error(`${path} -> rate limited twice, giving up`);
+  throw new Error(`af: ${path} rate limited twice, giving up`);
 }
 
 // The "url" field is a JWT whose payload holds the real vacancy link. One
@@ -91,7 +110,10 @@ export function usdMin(salaryLabel, salaryMinUsd) {
 }
 
 // Normalize a raw API job into the compact shape we expose and store.
-function normalize(job) {
+function normalize(job, signalConfig = {}) {
+  // The board summarises every posting, so signals have text to read here. It is
+  // the board's precis, not the employer's words - notes/agilefluent.md.
+  const found = detectSignals(job.description || '', signalConfig);
   return {
     // Bare id, deliberately: the store already holds these under the plain
     // number with statuses attached. Prefixing would orphan every mark.
@@ -115,6 +137,8 @@ function normalize(job) {
     visa: !!job.visa,
     skills: Array.isArray(job.skills) ? job.skills : [],
     date: job.createdAtIso ? job.createdAtIso.slice(0, 10) : null,
+    signals: found,
+    note: signalNote(found),
   };
 }
 
@@ -130,24 +154,29 @@ export async function count(filters) {
   return totalCount;
 }
 
-// Fetch up to maxPages of results (50 per page), throttled with jitter.
-//
-// Guarded like the other two adapters, and for the same reason: paging is a
-// request the board can ignore without saying so, and the store's dedup then
-// swallows the repeats - which is exactly how a four-page run on another board
-// reported "80 found, 20 new" while looking at page one four times.
-export async function search(filters, maxPages = 5) {
+/**
+ * The board's own total, or the reason there isn't one.
+ *
+ * Never fatal: `/jobs/count` and `/jobs/search` have been measured disagreeing
+ * about the same filters, and a total is worth one request but not the source.
+ */
+async function totalOrReason(filters) {
+  try {
+    return { total: await count(filters) };
+  } catch (err) {
+    return { total: null, reason: err.message };
+  }
+}
+
+// Guarded because paging is a request a board can ignore in silence, and the
+// store's dedup then swallows the repeats.
+export async function search(filters, maxPages = 5, { signalConfig = {} } = {}) {
   const out = [];
   const noRepeat = pageRepeatGuard('af');
-  // One extra request per search, and worth it: `/jobs/search` states only
-  // `hasMore`, so without this the answer could say how much was collected and
-  // never how much there was. The board's `searchQuery` is an ordered phrase
-  // match, so a query narrows hard and often to nothing - and "we collected
-  // none" and "the board has none" are the two readings that a silent zero
-  // leaves a caller to choose between. Budget in notes/request-budget.md.
-  const total = await count(filters);
+  const { total, reason } = await totalOrReason(filters);
+  let reachedEnd = false;
   for (let page = 1; page <= maxPages; page++) {
-    const { data, hasMore } = await post('/jobs/search', { filters, pagination: { page, limit: 50 } });
+    const { data, hasMore } = await post('/jobs/search', { filters, pagination: { page, limit: PAGE_SIZE } });
     // Promised more and delivered nothing: the shape moved, or paging broke.
     // An empty last page with hasMore false is an ordinary end of results.
     if (!data.length && hasMore) {
@@ -155,7 +184,7 @@ export async function search(filters, maxPages = 5) {
         + 'is more - paging or the response shape changed');
     }
     noRepeat(data[0]?.id, page);
-    const jobs = data.map(normalize);
+    const jobs = data.map((job) => normalize(job, signalConfig));
     // A vacancy without a link cannot be applied to, so a page of them is a
     // parsing failure wearing the clothes of an ordinary result.
     if (jobs.length && jobs.every((j) => j.url === null)) {
@@ -163,12 +192,13 @@ export async function search(filters, maxPages = 5) {
         + 'url - the token that carries the vacancy link changed shape');
     }
     out.push(...jobs);
-    if (!hasMore) break;
+    if (!hasMore) { reachedEnd = true; break; }
     if (page < maxPages) await http.throttle();
   }
-  // What the board says the filters matched, next to what was actually
-  // collected - the same pair the other adapters report.
+  // A bare null `found` reads as a board that states no totals, so the reason
+  // travels with it.
   out.found = total;
-  out.complete = out.length >= total;
+  out.complete = total != null ? out.length >= total : reachedEnd;
+  if (reason) out.foundUnavailable = reason;
   return out;
 }

@@ -28,12 +28,12 @@ read yesterday.
 - **It refuses to invent.** A salary the board quoted in a currency it did not name
   stays out of the comparable field, and a location is passed on as the board's
   claim rather than as a fact
-- **It reads the posting, not only the card.** Where a source publishes the
-  vacancy's own text, what people open a vacancy to check — whether it demands
-  the right to work in one country, whether the office is a requirement or an
-  offer, which language the requirements actually name — comes back as a flag
-  and the sentence it was found in. Which words matter is yours to configure,
-  and nothing is ever dropped for one: the quote is there to be read
+- **It reads the posting, not only the card.** Where a source publishes the text
+  — the employer's own, or the board's summary of it — what people open a vacancy
+  to check comes back as a flag and the sentence it was found in: whether it
+  demands the right to work in one country, whether the office is a requirement
+  or an offer, which language the requirements actually name. Which words matter
+  is yours to configure, and nothing is ever dropped for one
 - **It fails out loud.** A page that parses to nothing, a paging parameter the
   board ignored, a run that cannot say what it cost — each of those is an error
   here, not a quiet empty answer that looks like a slow day

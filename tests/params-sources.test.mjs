@@ -91,17 +91,23 @@ test('a signal named with nothing to look for is refused', async () => {
   assert.throws(() => wrong.signalConfig(), /must be a list of language names/);
 });
 
-// AgileFluent's `query` is an ordered phrase search - adjacent words, in order -
-// so a stack typed as a query is a phrase nobody wrote. Counts in notes/.
+// AgileFluent's `query`. A multi-word one used to be refused here as an ordered
+// phrase; measured on clean filters that was wrong. Counts in notes/.
 test('a single term reaches the board as its search', async () => {
   const { afFilters } = await load('watcher');
   assert.equal(afFilters({ query: 'node.js' }).searchQuery, 'node.js');
 });
 
-test('a multi-word query is refused with what the board would have done with it', async () => {
+test('a multi-word query reaches the board too, rather than being refused here', async () => {
+  // Refusing a query the board answers is worse than the silent zero it was
+  // meant to prevent: a zero shows in the number, a refusal looks like the board.
   const { afFilters } = await load('watcher');
-  assert.throws(() => afFilters({ query: 'backend node.js' }),
-                /ordered phrase search.*silent zero/s);
+  assert.equal(afFilters({ query: 'nodejs backend' }).searchQuery, 'nodejs backend');
+});
+
+test('a query longer than the board schema allows is cut, not sent whole', async () => {
+  const { afFilters } = await load('watcher');
+  assert.equal(afFilters({ query: 'x'.repeat(300) }).searchQuery.length, 255);
 });
 
 test('a query of nothing but spaces is no query, not an empty one', async () => {

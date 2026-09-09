@@ -1,8 +1,7 @@
 # Claude Project Guide — job-radar
 
-MCP server over several job sources. Six adapters — five boards (AgileFluent, TalentMove,
-web3.career, jobs.solana.com, career.habr.com) and one employer watchlist read from
-Greenhouse, Ashby and BambooHR — one shared dedup store, stdio protocol glue. Node 22.5+,
+MCP server over several job sources: one adapter each, one shared dedup store, stdio
+protocol glue. Which sources, and what each needs, is the table in `README.md`. Node 22.5+,
 no build step, no TypeScript, `node:sqlite` for state. Package manager: **pnpm**.
 
 The responsibility of this repo is not "talk to a board". It is **find what has not been
@@ -109,7 +108,8 @@ every one was written by the author of the change:
 - **dead exports** — a constant or helper exported and imported nowhere. Either it is used
   or it goes; "somebody might" is how a module grows a public surface nobody maintains
 - **a number in two files** — the same measurement in a comment and in `notes/`, already
-  disagreeing because the second measurement was bigger than the first
+  disagreeing because the second measurement was bigger than the first. One number, one
+  home: [Documentation](#documentation-three-files-three-jobs)
 - **documentation the change invalidated** — a debt table listing work that is done, a
   README paragraph describing the old shape, a command line that grew an argument
 - **scope creep, and its opposite** — a refactor nobody asked for, or a fix that stopped at
@@ -148,7 +148,7 @@ found in a diff here at least once:
 - the store, the backups and the personal `profiles.json`: confirm they are *ignored* with
   `git check-ignore -v`, not merely absent from the diff
 
-**Then verify it by running, not by reading.** Copy what `git status --porcelain -uall`
+**Then check the scan by running, not by reading.** Copy what `git status --porcelain -uall`
 lists into an empty directory — no `profiles.json`, no store, no `node_modules` — install,
 run the tests, start the server. A test that needs the personal config, or a server that
 answers emptily instead of naming `profiles.example.json`, is the defect. Finish with a
@@ -162,7 +162,7 @@ reviews it and commits it themselves; a commit made for them removes that review
 
 Order, and none of it is optional:
 
-1. tests pass — `pnpm test`, and say how many ran and how many were skipped
+1. tests pass — `pnpm test`, reported as [Testing](#testing) requires
 2. `git status --porcelain -uall`, read line by line. `-uall` because a directory collapses
    to one line and hides what is inside it
 3. the scan above, reported category by category
@@ -188,8 +188,11 @@ Do not commit, amend, push, or create a branch unless asked in that message.
   the user; the repository that serves them is. Reproduce a non-English string only where
   it must be verbatim — a tag value, a probe query, a sample chunk — and quote it as data
   rather than writing prose around it
-- Comments only where the code is not self-evident, and only the non-obvious *why* — never
-  a retelling of *what*. One or two lines, no essays
+- **Declarative code, thin comments.** A name, a small function or an exported constant
+  beats a paragraph explaining a clever line — reach for a comment only after the code
+  cannot be made to say it. One or two lines, three at the ceiling, and only the
+  non-obvious *why*. A comment growing past that is the signal to fix the code or move
+  the prose to `notes/` (see [Documentation](#documentation-three-files-three-jobs))
 
 ## Testing
 
@@ -200,16 +203,10 @@ Do not commit, amend, push, or create a branch unless asked in that message.
 - A skipped test must be visible: print how many were skipped and why. `OK (skipped=12)` is
   not `OK`
 - Cover the seam, not each side of it: feed one module's output straight into its consumer
-- **The seam test starts real server processes, so closing them is not optional.** A
-  client that is not closed leaves a server running and `node --test` will not exit
-  while it is: a suite that passed every test and still hangs. One orphaned runner sat
-  at PPID 1 on a full core for three days. So the test has one way to start a server
-  and it closes in a `finally`, and `pnpm test` carries `--test-timeout` so a hang
-  fails with a name instead of running forever
-- **`--test-force-exit` was tried for the same problem and rejected.** It ends the run
-  while files are still reporting: three runs of this suite gave 247, 254 and 251 tests,
-  each claiming `fail 0`. A flag that silently skips tests and calls it a pass is worse
-  than the hang it prevents
+- **A spawned server is closed in a `finally`, always.** An unclosed client leaves the
+  process running and `node --test` will not exit: a suite that passes and then hangs.
+  `--test-timeout` bounds it; `--test-force-exit` was tried and rejected because it skips
+  tests silently — numbers in `notes/testing.md`
 
 ## What the boards have already taught us
 
