@@ -220,6 +220,10 @@ Each cost a debugging session. The measurements behind them are in `notes/`.
   neighbour, or one board's from another: validate locally what a board accepts quietly
 - **Take API parameter names from `data-param`, never from `name`.** Both sit on the same
   element; the API reads the first
+- **A filter on a field the board leaves empty is a silent cut.** One board sets `role` on
+  about half its postings and `grade` on two thirds, so filtering on either discards the
+  rest before anything else runs, and the answer looks like a market. Measure the coverage
+  of a field before filtering on it, and say so where a caller will read it
 - **A category is not a partition.** A negative result inside one category says nothing
   about the board — a posting whose subject is plainly crypto has been found in `dev` and
   not in `crypto`. When reporting an absence, name the scope

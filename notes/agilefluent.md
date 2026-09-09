@@ -103,6 +103,93 @@ are not reproduced here — they are somebody's search, and the board fact is th
 one above: **some role strings crash this endpoint and the board says which only
 by falling over.**
 
+### The valid values are recoverable, from the answers rather than the schema
+
+The board publishes no list, but every record carries a `role`, and that field is
+the accepted title **lowercased with only the FIRST space turned into `_`**.
+Harvested over 200 records, 48 distinct values, and the mangling shows itself
+wherever a title runs past two words:
+
+    software_architect        head_of marketing         full_stack engineer
+    site_reliability engineer (sre)                     data_engineer
+    senior_/ group product manager                      typescript_developer
+
+So the derivation runs backwards: first `_` to a space, restore the casing.
+Twelve values derived that way were tried and **twelve answered 200**:
+
+| derived from | value sent | count |
+|---|---|---|
+| `software_engineer` | `Software Engineer` | 9431 |
+| `full_stack engineer` | `Full Stack Engineer` | 6065 |
+| `data_engineer` | `Data Engineer` | 5321 |
+| `backend_engineer` | `Backend Engineer` | 3164 |
+| `devops_engineer` | `DevOps Engineer` | 2650 |
+| `site_reliability engineer (sre)` | `Site Reliability Engineer (SRE)` | 1040 |
+| `cloud_architect` | `Cloud Architect` | 476 |
+| `typescript_developer` | `TypeScript Developer` | 8 |
+
+**The comparison is exact.** Same value, four spellings, all 500:
+
+| sent | result |
+|---|---|
+| `Backend Engineer` | 200, 3164 |
+| `backend engineer` | 500 |
+| `BACKEND ENGINEER` | 500 |
+| `Backend  Engineer` (two spaces) | 500 |
+| `" Backend Engineer"` (leading space) | 500 |
+
+A snake_case value is not accepted either — `solution_architect`,
+`founding_engineer` and friends all 500. The response field only *looks* like an
+internal id; it is a mangled display title, and the filter wants the title.
+
+### `roles` silently loses half the board
+
+`role` came back as **`unknown` on 108 of 200** sampled records. The field is
+optional and most of the corpus has no role assigned at all, so **any non-empty
+`roles` discards more than half of the board before any other filter runs** —
+without saying so, because there is nothing in the answer to say it with.
+
+That is not a bug to fix. It is a property of the source, and it is why the tool
+description names it: the next person to see a `roles` field will fill it in.
+
+## `grades` is the same filter with the same hole
+
+Asked the same way. The schema declares a closed enum — `intern, junior, middle,
+senior, lead, principal` — and one of the six still crashes:
+
+| filters | result |
+|---|---|
+| `grades: ["intern"]` | 200, 15700 |
+| `grades: ["junior"]` | 200, 35560 |
+| `grades: ["middle"]` | 200, 100155 |
+| `grades: ["senior"]` | 200, 125851 |
+| `grades: ["lead"]` | 200, 29446 |
+| `grades: ["principal"]` | **500** |
+
+`principal` is in the board's own schema and crashes anyway — the same shape as
+`roles`, where the schema is not what the query can survive.
+
+The coverage question has a cleaner answer here than for roles, because the enum
+is closed and the union can be asked for directly:
+
+| | records | share of the board |
+|---|---|---|
+| whole board | 456811 | 100% |
+| the five grades that answer, as a union | 306707 | 67% |
+| **carrying none of them** | **150104** | **33%** |
+| `grades: ["senior","lead"]` | 155296 | 34% |
+
+And the `grade` field over the same 200 records: `unknown` **100**, senior 44,
+middle 15, junior 14, director 8, lead 5, head 5, intern 4, c-level 4, vp 1.
+
+Two things in that line. Half the sample has no grade — the same hole as `roles`.
+And `director`, `head`, `c-level` and `vp` are values the field carries that the
+filter enum cannot express, so those records are unreachable through `grades` no
+matter what is asked for.
+
+**So both filters cut silently, and they cut different thirds.** Sent together
+they compose, and the answer looks like a market rather than like a filter.
+
 The board's own filter schema declares `roles` as `z.array(z.string())` with **no
 vocabulary at all**, so this is not a refusal — the value passes validation and
 the query behind it falls over. There is no list to check against locally, and
@@ -181,6 +268,9 @@ working values outside the four the profile happens to hold, and whether the
 board would publish them, is also unknown — the schema imposes no vocabulary, so
 there is nothing to read.
 
-Whether `grades: ["principal"]` still crashes. The schema now lists it as a legal
-value, and the comment in the adapter saying it returns 500 predates that; it has
-not been re-measured.
+Whether the 48 role ids seen over 200 records are the whole vocabulary. They are
+what a sample of the corpus happened to carry, and the derivation was confirmed
+on twelve of them; a value the sample missed can still only be found by trying it.
+
+Whether `roles` and `grades` drop the same records or different ones. Each was
+measured against the whole board, never against the other.
