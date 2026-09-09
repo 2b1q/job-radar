@@ -46,6 +46,63 @@ test('office presence is raised where it is required', () => {
   }
 });
 
+test('a work-arrangement word is not one unless it describes the work', () => {
+  // Live false positive: `hybrid` raised on a designer's portfolio. The same
+  // rule the language signal uses - a word from its own subject has to govern
+  // the match - now applies here too.
+  for (const sentence of [
+    'Requires a hybrid portfolio of UX and visual craft, and deep intuition for gaming culture',
+    'We run a hybrid cloud on AWS and bare metal',
+    'You will design on-site power systems for data centres',
+  ]) {
+    assert.deepEqual(detectSignals(sentence, { onsite: true }), [], sentence);
+  }
+});
+
+test('an arrangement stated without a noun still counts', () => {
+  // Where the rule above stops: this names no role and no office and is still an
+  // arrangement. A phrase carrying its own subject needs no neighbour to vouch
+  // for it. Sentences are invented; the shapes are ones live postings use.
+  for (const sentence of [
+    'Hybrid in Riverton, MA',
+    'Hybrid in Riverton, Fairview, Brookfield, or Oakvale',
+    'Two days per week in the office is expected',
+  ]) {
+    assert.equal(detectSignals(sentence, { onsite: true }).length, 1, sentence);
+  }
+});
+
+test('a phrase under a negation is kept, and says it is negated', () => {
+  // Live false positive, and the worse of the two: the flag said relocation was
+  // offered on a posting that ruled it out. "There is none" is a finding.
+  const config = { phrases: { relocationOffered: ['visa sponsorship'] } };
+  const [denied] = detectSignals('The role is fully remote within one country, with no visa sponsorship', config);
+  assert.equal(denied.name, 'relocationOffered');
+  assert.equal(denied.polarity, 'negated');
+  assert.match(signalNote([denied]), /relocationOffered \(negated\)/);
+
+  const [offered] = detectSignals('We offer visa sponsorship for the right candidate', config);
+  assert.equal(offered.polarity, 'affirmed');
+  assert.doesNotMatch(signalNote([offered]), /negated/);
+});
+
+test('negation is read for every signal, not only for phrases', () => {
+  // One rule, or the next signal added gets the defect back.
+  const [onsite] = detectSignals('This role is not a hybrid role, we are remote-only', { onsite: true });
+  assert.equal(onsite.polarity, 'negated');
+  const [lang] = detectSignals('No production experience in Go is required for this role', { languages: ['Go'] });
+  assert.equal(lang.polarity, 'negated');
+});
+
+test('a negation belonging to another clause does not reach the match', () => {
+  const config = { phrases: { relocationOffered: ['visa sponsorship'] } };
+  const [found] = detectSignals(
+    'There is no dress code and no fixed hours whatsoever here, and we are glad to offer full visa sponsorship',
+    config,
+  );
+  assert.equal(found.polarity, 'affirmed');
+});
+
 test('and not where the office is an offer', () => {
   // Each names an office; none asks anybody to come in.
   for (const sentence of [

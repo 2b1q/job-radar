@@ -94,29 +94,9 @@ is the part a title and a tag list get wrong:
 Nothing is dropped for a signal. The finding carries the sentence it was found
 in, and the decision stays with the person reading it.
 
-### What the language signal actually costs, measured on a live read, 2026-09-09
-
-Two public Greenhouse and Ashby instances, 276 postings, asking for `Go`, `Rust`,
-`Scala` and `Java`:
-
-| rule | postings flagged | of those, wrong |
-|---|---|---|
-| the name appears as a word | 35 | most of them |
-| ...and not in a hyphenated compound | 30 | `go-to-market` gone |
-| ...and the sentence contains a requirement word | 24 | still "assess the core **skills**" reaching back to a verb |
-| ...and the requirement word comes BEFORE the name, within 60 characters | **3** | 3 |
-
-The three that survive are all `Go` — "you **go** beyond dashboards" after
-"Strong analytical skills", and two of "writing specs before **building**". A
-two-letter English verb that is also a language name is not separable from its
-own grammar without parsing the sentence, and this is a flag with a quote beside
-it: a reader dismisses one of these in a second, which is cheaper than the
-parser. `Rust`, `Scala` and `Java` produced no false positive at any stage.
-
-The rule is a cue BEFORE the name and close to it, because that is the
-construction being looked for. "The sentence contains a requirement word
-somewhere" was tried and is in the table: any long enough sentence eventually
-contains one.
+What each rule costs, on 276 postings from these two providers and on 200 from a
+board, is in [signals.md](signals.md) — along with the two defects a live run
+found in it.
 
 ## What is still unmeasured
 

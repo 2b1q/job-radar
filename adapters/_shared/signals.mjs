@@ -34,16 +34,20 @@ function sentences(text) {
     .filter((s) => s.length > 2);
 }
 
-// Office presence, and the qualifiers that turn it into an offer rather than a
-// requirement. English job-ad grammar rather than anybody's preference, which is
-// why these are here and the vocabularies are not.
+// Office presence. English job-ad grammar rather than anybody's preference, which
+// is why these are here and the vocabularies are not.
+// `ambiguous` marks a trigger that is only a work arrangement in the right
+// company: "a hybrid role" against "a hybrid portfolio", "an on-site position"
+// against "on-site power systems". Those need a word from their own subject
+// nearby; the longer phrases below already carry one.
 const ONSITE = [
-  /\bhybrid\b/i,
-  /\b(?:\d+|one|two|three|four|five)\s*(?:\+\s*)?(?:days?|times?)\s*(?:a|per|each)?\s*week[^.]{0,20}\b(?:in|at|from)\s+(?:the\s+)?office\b/i,
-  /\b(?:days?|time)\s+in\s+(?:the\s+)?office\b/i,
-  /\bon[\s-]?site\b/i,
-  /\bin[\s-]office\b/i,
-  /\brelocat\w+\s+to\b[^.]{0,40}\bis\s+(?:required|mandatory|expected)\b/i,
+  { re: /\bhybrid\b/i, ambiguous: true },
+  { re: /\bon[\s-]?site\b/i, ambiguous: true },
+  { re: /\bin[\s-]office\b/i },
+  { re: /\bhybrid\s+(?:in|at|near|within|from)\b/i },
+  { re: /\b(?:\d+|one|two|three|four|five)\s*(?:\+\s*)?(?:days?|times?)\s*(?:a|per|each)?\s*week[^.]{0,20}\b(?:in|at|from)\s+(?:the\s+)?office\b/i },
+  { re: /\b(?:days?|time)\s+in\s+(?:the\s+)?office\b/i },
+  { re: /\brelocat\w+\s+to\b[^.]{0,40}\bis\s+(?:required|mandatory|expected)\b/i },
 ];
 
 // The same words with any of these in the sentence are an option being offered,
@@ -57,31 +61,61 @@ const ONSITE_OPTIONAL = /\b(?:optional|if you (?:prefer|wish|want)|as an option|
 // point - a title and a tag list agree with neither.
 const ALTERNATIVE = /\b(?:and\/or|or)\b|\//;
 
-// And the name has to be where a requirement puts it. Measured in the wild: a
-// posting saying "candidates will go through a shared interview process
-// designed to assess the core skills" raised `Go` twice over - once on the verb,
-// and again when the sentence was merely required to contain a requirement word,
-// which "skills" at the far end of it satisfied.
-//
-// So the cue has to come BEFORE the name and CLOSE to it. That is the shape of
-// the construction being looked for - "strong production experience in Go",
-// "our backend is written in Go" - rather than a bag of words that any long
-// sentence eventually contains.
-const REQUIREMENT_CUE = /\b(?:experien\w+|expertise|proficien\w+|fluent|knowledge|background|skilled|skills?|strong|solid|deep|advanced|written|built|building|production|primary|main|core|required?|must have|worked)\b/gi;
+// A word matches; a sentence asserts. Two checks stand between the two, and both
+// are grammar rather than vocabulary, so both live here and neither is
+// configurable. Measured cases in notes/signals.md.
 
-// How far a cue may sit from the name it governs. Wide enough for "experience
-// building scalable backend services in Go", narrow enough that a cue at the far
-// end of an unrelated sentence does not reach back.
+// 1. GOVERNED: the match only counts where a word from its own subject stands
+//    near it. `Go` needs a requirement; `hybrid` needs a working arrangement.
+const CUES = {
+  // "strong production experience in Go", not "candidates will go through".
+  language: {
+    words: /\b(?:experien\w+|expertise|proficien\w+|fluent|knowledge|background|skilled|skills?|strong|solid|deep|advanced|written|built|building|production|primary|main|core|required?|must have|worked)\b/gi,
+    mustPrecede: true,
+  },
+  // "a hybrid role", not "a hybrid portfolio of UX and visual craft".
+  onsite: {
+    words: /\b(?:offices?|on-?site|in-?person|remote|work(?:ing|place|s)?|presence|week|days?|commut\w+|attend\w+|schedule|relocat\w+|roles?|position|based|hours?)\b/gi,
+    mustPrecede: false,
+  },
+};
+
+// How far a cue may sit from what it governs. Wide enough for "experience
+// building scalable backend services in Go", narrow enough that a word at the
+// far end of an unrelated sentence does not reach back.
 const CUE_WINDOW = 60;
 
-/** Is this name, at this position, the object of a requirement? */
-function isRequired(sentence, at) {
-  REQUIREMENT_CUE.lastIndex = 0;
-  for (let cue = REQUIREMENT_CUE.exec(sentence); cue; cue = REQUIREMENT_CUE.exec(sentence)) {
-    const gap = at - (cue.index + cue[0].length);
-    if (gap >= 0 && gap <= CUE_WINDOW) return true;
+/** Does a word from this subject stand near enough to govern the match? */
+function governed(sentence, at, length, kind) {
+  const { words, mustPrecede } = CUES[kind];
+  const end = at + length;
+  words.lastIndex = 0;
+  for (let cue = words.exec(sentence); cue; cue = words.exec(sentence)) {
+    const cueEnd = cue.index + cue[0].length;
+    if (cueEnd <= at && at - cueEnd <= CUE_WINDOW) return true;
+    if (mustPrecede) continue;
+    // A phrase long enough to carry its own cue - "two days per week in the
+    // office" - governs itself. The cue has to be a PART of it: a trigger word
+    // that is also a cue word, `on-site`, would otherwise vouch for itself.
+    if (cue.index >= at && cueEnd <= end && (cue.index > at || cueEnd < end)) return true;
+    if (cue.index >= end && cue.index - end <= CUE_WINDOW) return true;
   }
   return false;
+}
+
+// 2. POLARITY: employers write "no visa sponsorship" as readily as they write
+//    "visa sponsorship", and a substring match cannot tell them apart. The
+//    finding is kept either way - "there is none" is worth the same as "there
+//    is" - and carries which one it is.
+const NEGATION = /\b(?:no|not|never|without|excluding|nor|cannot|can'?t|won'?t|unable|lacks?|lacking)\b/i;
+const NEGATION_WINDOW = 45;
+
+export const AFFIRMED = 'affirmed';
+export const NEGATED = 'negated';
+
+/** What the sentence does with the match: asserts it, or denies it. */
+function polarity(sentence, at) {
+  return NEGATION.test(sentence.slice(Math.max(0, at - NEGATION_WINDOW), at)) ? NEGATED : AFFIRMED;
 }
 
 /** A regex-safe literal, so a configured phrase like "C++" is matched as text. */
@@ -103,7 +137,20 @@ const NOT_A_BOUNDARY = '\\p{L}\\p{N}+#\\-';
  * separate "Go" from "Golang" any better than it separates "C" from "C++",
  * which has no word character to end on at all.
  */
-const languageAt = (name) => new RegExp(`(?:^|[^${NOT_A_BOUNDARY}])${literal(name)}(?:$|[^${NOT_A_BOUNDARY}])`, 'iu');
+const languageAt = (name) => new RegExp(`(?:^|[^${NOT_A_BOUNDARY}])(${literal(name)})(?:$|[^${NOT_A_BOUNDARY}])`, 'giu');
+
+/** The first sentence where `re` matches under a rule, with its polarity. */
+function findIn(lines, re, accept) {
+  for (const line of lines) {
+    const m = re.exec(line);
+    re.lastIndex = 0;
+    if (!m || !accept(line, m.index, m[0].length)) continue;
+    return { quote: line, polarity: polarity(line, m.index) };
+  }
+  return null;
+}
+
+const always = () => true;
 
 /**
  * Findings in one posting's text.
@@ -112,43 +159,46 @@ const languageAt = (name) => new RegExp(`(?:^|[^${NOT_A_BOUNDARY}])${literal(nam
  * not asked for rather than that it is empty:
  *
  *     phrases   { <name>: [phrase, ...] }  a phrase anywhere in the text
- *     onsite    true                       office presence, qualifiers honoured
+ *     onsite    true                       office presence
  *     languages [name, ...]                a language named as the requirement
  *
- * Returns `[{ signal, name, quote }]` - at most one finding per name, because a
- * second sentence saying the same thing adds a quote and no information.
+ * Returns `[{ signal, name, quote, polarity }]` - at most one finding per name,
+ * and `polarity` says whether the sentence asserts it or denies it. A denial is
+ * a finding, not a silence: "we do not sponsor visas" is worth as much as the
+ * opposite and means something else.
  */
 export function detectSignals(text, config = {}) {
   const lines = sentences(text);
   if (!lines.length) return [];
   const found = [];
-  const add = (signal, name, quote) => {
-    if (!found.some((f) => f.signal === signal && f.name === name)) found.push({ signal, name, quote });
+  const add = (signal, name, hit) => {
+    if (hit && !found.some((f) => f.signal === signal && f.name === name)) {
+      found.push({ signal, name, quote: hit.quote, polarity: hit.polarity });
+    }
   };
 
   for (const [name, phrases] of Object.entries(config.phrases || {})) {
     for (const phrase of phrases) {
-      const re = new RegExp(literal(phrase), 'i');
-      const hit = lines.find((s) => re.test(s));
+      const hit = findIn(lines, new RegExp(literal(phrase), 'gi'), always);
       if (hit) { add(SIGNALS.phrase, name, hit); break; }
     }
   }
 
   if (config.onsite) {
-    const hit = lines.find((s) => !ONSITE_OPTIONAL.test(s) && ONSITE.some((re) => re.test(s)));
-    if (hit) add(SIGNALS.onsite, 'onsite', hit);
+    for (const { re, ambiguous } of ONSITE) {
+      const hit = findIn(lines, new RegExp(re.source, 'gi'), (line, at, len) => (
+        !ONSITE_OPTIONAL.test(line) && (!ambiguous || governed(line, at, len, 'onsite'))
+      ));
+      if (hit) { add(SIGNALS.onsite, 'onsite', hit); break; }
+    }
   }
 
   for (const language of config.languages || []) {
-    const re = languageAt(language);
     // An alternative is not a wall, and neither is a name in passing. Both are
-    // passed over rather than ending the search, because the same posting often
-    // names the language again in the sentence where it means it.
-    const hit = lines.find((s) => {
-      const at = s.search(re);
-      return at !== -1 && !ALTERNATIVE.test(s) && isRequired(s, at);
-    });
-    if (hit) add(SIGNALS.language, language, hit);
+    // passed over rather than ending the search: the same posting often names
+    // the language again in the sentence where it means it.
+    add(SIGNALS.language, language, findIn(lines, languageAt(language),
+      (line, at, len) => !ALTERNATIVE.test(line) && governed(line, at, len, 'language')));
   }
   return found;
 }
@@ -156,11 +206,16 @@ export function detectSignals(text, config = {}) {
 /**
  * The findings as one line for the store's `note`, quotes included.
  *
+ * A denial is labelled rather than dropped, because the unlabelled version of
+ * this note once read "relocation offered" off a posting that ruled it out.
  * Trimmed per quote rather than in total: a note whose last finding is cut off
  * is the one somebody would have wanted to read.
  */
 export function signalNote(found, quoteLimit = 160) {
   return found
-    .map((f) => `${f.name}: "${f.quote.length > quoteLimit ? `${f.quote.slice(0, quoteLimit - 1)}…` : f.quote}"`)
+    .map((f) => {
+      const quote = f.quote.length > quoteLimit ? `${f.quote.slice(0, quoteLimit - 1)}…` : f.quote;
+      return `${f.name}${f.polarity === NEGATED ? ' (negated)' : ''}: "${quote}"`;
+    })
     .join(' | ') || null;
 }

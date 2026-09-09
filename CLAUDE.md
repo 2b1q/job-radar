@@ -220,6 +220,11 @@ Each cost a debugging session. The measurements behind them are in `notes/`.
   neighbour, or one board's from another: validate locally what a board accepts quietly
 - **Take API parameter names from `data-param`, never from `name`.** Both sit on the same
   element; the API reads the first
+- **A match is not an assertion.** A word found in a posting's text says nothing until
+  something governs it and its polarity is read: `hybrid` described a portfolio, and
+  `visa sponsorship` was found inside "no visa sponsorship". Both were live, both flagged
+  the opposite of the truth. The vocabulary is the user's; the grammar is ours —
+  `notes/signals.md`
 - **A filter on a field the board leaves empty is a silent cut.** One board sets `role` on
   about half its postings and `grade` on two thirds, so filtering on either discards the
   rest before anything else runs, and the answer looks like a market. Measure the coverage
