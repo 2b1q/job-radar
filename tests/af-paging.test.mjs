@@ -26,10 +26,9 @@ const job = (id) => ({
 // One response per call, in order; past the end the board keeps answering,
 // which is the failure being reproduced rather than an edge case.
 //
-// `search` opens with a count, because `/jobs/search` states only `hasMore` and
-// the board's own total is what tells a narrowed query from an empty one. That
-// request is answered here and left out of `calls`, which are the page requests
-// these tests are about.
+// `search` opens with a count: `/jobs/search` states only `hasMore`, and the
+// board's total is what tells a narrowed query from an empty one. That request
+// is answered here and kept out of `calls`.
 function stub(pages, { hasMoreAfterLast = false, total = 100 } = {}) {
   const calls = [];
   globalThis.fetch = async (url, init) => {
@@ -72,16 +71,13 @@ test('an empty page with no more promised is an ordinary end of results', async 
   stub([[]], { hasMoreAfterLast: false, total: 0 });
   const jobs = await search({ roles: [] }, 2);
   assert.equal(jobs.length, 0);
-  // And the emptiness says which kind it is. The board's own total is what
-  // separates "these filters match nothing" from "we stopped reading", and this
-  // board states one only through its count endpoint.
+  // And the emptiness says which kind it is: nothing matched, not we stopped.
   assert.equal(jobs.found, 0);
   assert.equal(jobs.complete, true);
 });
 
 test('a collected page shorter than the board total is not reported as complete', async () => {
-  // The pair the other adapters report, and the reason a narrowed query on this
-  // board no longer reads as an empty market.
+  // The found/collected pair the other adapters report.
   stub([[job(1), job(2)]], { hasMoreAfterLast: false, total: 57 });
   const jobs = await search({ roles: [] }, 1);
   assert.equal(jobs.found, 57);

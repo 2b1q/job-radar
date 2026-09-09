@@ -30,19 +30,37 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
 const DB = join(mkdtempSync(join(tmpdir(), 'jobs-server-')), 'jobs.db');
 
-let client;
-
-before(async () => {
-  client = new Client({ name: 'server-store-test', version: '0' });
+// Every client here starts a REAL server process, and an unclosed one keeps the
+// test runner alive after the suite has passed. One way to start a server, and
+// it always closes - not three connect blocks each expected to remember.
+async function connect(name, env = {}) {
+  const client = new Client({ name, version: '0' });
   await client.connect(new StdioClientTransport({
     command: process.execPath,
     args: ['--experimental-sqlite', '--import', join(HERE, 'helpers/stub-boards.mjs'), 'server.mjs'],
     cwd: ROOT,
-    env: { ...process.env, JOBS_DB_PATH: DB, JOBS_PROFILES: 'profiles.example.json' },
+    env: { ...process.env, JOBS_DB_PATH: DB, JOBS_PROFILES: 'profiles.example.json', ...env },
   }));
-});
+  return client;
+}
 
-after(async () => { await client.close(); });
+/** A server for the length of one test, closed whether the test passes or not. */
+async function withServer(name, env, run) {
+  const client = await connect(name, env);
+  try {
+    return await run(client);
+  } finally {
+    await client.close();
+  }
+}
+
+let client;
+
+before(async () => { client = await connect('server-store-test'); });
+
+// Closed even if `before` threw before assigning: a failed setup used to leave
+// its child behind.
+after(async () => { await client?.close(); });
 
 /** The tool answers with one JSON text block; this is what a client reads. */
 async function search(args) {
@@ -114,9 +132,8 @@ test('a cross-board duplicate is reported, not silently dropped', async () => {
 });
 
 test('the fifth source reaches the store, and fills the skills the store keeps', async () => {
-  // career.habr.com is here for a market the other four do not reach at all. It
-  // does NOT reach the employer, and the record says so rather than passing the
-  // board's own page off as an apply link.
+  // career.habr.com covers a market the other four do not. It does not reach the
+  // employer, and says so rather than passing its own page off as an apply link.
   const hc = await search({ source: 'hc', pages: 1 });
   assert.equal(hc.collected, 2);
   assert.equal(hc.returned, 2);
@@ -159,21 +176,12 @@ test('and the budget adds up to what the runs actually spent', async () => {
 // the shipped example is not the active one - so this source is exercised the
 // way a user reaches it, by naming the profile.
 test('the watchlist source reaches the store, with its signals and its link', async () => {
-  const watcher = new Client({ name: 'server-store-test-ats', version: '0' });
-  await watcher.connect(new StdioClientTransport({
-    command: process.execPath,
-    args: ['--experimental-sqlite', '--import', join(HERE, 'helpers/stub-boards.mjs'), 'server.mjs'],
-    cwd: ROOT,
-    env: { ...process.env, JOBS_DB_PATH: DB, JOBS_PROFILES: 'profiles.example.json', JOBS_PROFILE: 'android' },
-  }));
-  try {
+  await withServer('server-store-test-ats', { JOBS_PROFILE: 'android' }, async (watcher) => {
     const res = await watcher.callTool({ name: 'jobs_search', arguments: { source: 'ats', pages: 1 } });
     const ats = JSON.parse(res.content[0].text);
 
-    // The stub's Greenhouse instance publishes the posting the other two boards
-    // already put in the store. The row that is there wins - it may carry a
-    // status somebody set by hand - but the link that reaches the employer is
-    // the one thing this source was added for, so it is added to that row.
+    // The stub's Greenhouse instance republishes a posting already in the store.
+    // The stored row wins, but gains the link this source was added for.
     assert.equal(ats.collected, 1);
     assert.equal(ats.returned, 0, 'the posting is already stored under a board id');
     const [merged] = ats.skipped.merged;
@@ -181,33 +189,19 @@ test('the watchlist source reaches the store, with its signals and its link', as
     assert.match(merged.atEmployer, /greenhouse\.io/);
     assert.equal(merged.stored, true);
 
-    // And through the seam: in the store, not only in the answer that reported
-    // it. This is what a shortlist asks the day after the run.
+    // And in the store, not only in the answer - what a shortlist asks tomorrow.
     const [kept] = rows('SELECT url, apply_url, apply_from FROM jobs WHERE id = ?', '26100500');
     assert.match(kept.apply_url, /greenhouse\.io/, 'the way in survives the call');
     assert.equal(kept.apply_from, 'ats:gh:example-co:7000500');
     assert.doesNotMatch(kept.url, /greenhouse\.io/, 'and the original link is not substituted');
-  } finally {
-    await watcher.close();
-  }
+  });
 });
 
 test('every source the schema declares is one the server can actually dispatch', async () => {
-  // The source list is written twice: `SOURCE_CODES` in params.mjs, which the
-  // tool schema is derived from, and the adapter map in server.mjs, which the
-  // dispatch reads. A code in one and not the other is silent in whichever
-  // direction it goes - an adapter nobody can reach, or a source the schema
-  // accepts and the dispatch then calls a method on `undefined`. Calling every
-  // declared source is the cheapest way to hold the two together, and it fails
-  // the moment somebody adds one to a single place.
-  const watcher = new Client({ name: 'server-store-test-sources', version: '0' });
-  await watcher.connect(new StdioClientTransport({
-    command: process.execPath,
-    args: ['--experimental-sqlite', '--import', join(HERE, 'helpers/stub-boards.mjs'), 'server.mjs'],
-    cwd: ROOT,
-    env: { ...process.env, JOBS_DB_PATH: DB, JOBS_PROFILES: 'profiles.example.json', JOBS_PROFILE: 'android' },
-  }));
-  try {
+  // The list is written twice - SOURCE_CODES, which the schema derives from, and
+  // the adapter map the dispatch reads. A code in one but not the other is
+  // silent either way, so every declared source is called.
+  await withServer('server-store-test-sources', { JOBS_PROFILE: 'android' }, async (watcher) => {
     const { tools } = await watcher.listTools();
     const declared = tools.find((t) => t.name === 'jobs_search').inputSchema.properties.source.enum;
     assert.ok(declared.length >= 6, 'the schema names every source');
@@ -215,23 +209,13 @@ test('every source the schema declares is one the server can actually dispatch',
       const res = await watcher.callTool({ name: 'jobs_count', arguments: { source } });
       assert.equal(res.isError, undefined, `${source}: ${res.content[0].text}`);
     }
-  } finally {
-    await watcher.close();
-  }
+  });
 });
 
 test('and a watchlist posting nobody has stored keeps its note in the store', async () => {
-  const watcher = new Client({ name: 'server-store-test-ats2', version: '0' });
-  await watcher.connect(new StdioClientTransport({
-    command: process.execPath,
-    args: ['--experimental-sqlite', '--import', join(HERE, 'helpers/stub-boards.mjs'), 'server.mjs'],
-    cwd: ROOT,
-    env: { ...process.env, JOBS_DB_PATH: DB, JOBS_PROFILES: 'profiles.example.json', JOBS_PROFILE: 'android' },
-  }));
-  try {
-    // Two companies: the first is the twin above, the second is new. The profile
-    // asks for office presence, and the second company's postings say enough for
-    // it - quoted, and left for a human to decide about.
+  await withServer('server-store-test-ats2', { JOBS_PROFILE: 'android' }, async (watcher) => {
+    // Two companies: the twin above, then a new one whose postings raise the
+    // office-presence signal the profile asks for.
     const res = await watcher.callTool({ name: 'jobs_search', arguments: { source: 'ats', pages: 2 } });
     const ats = JSON.parse(res.content[0].text);
     assert.ok(ats.returned > 0, 'the second company answered');
@@ -241,7 +225,5 @@ test('and a watchlist posting nobody has stored keeps its note in the store', as
     const noted = rows("SELECT id, note FROM jobs WHERE source = 'ats' AND note IS NOT NULL");
     assert.ok(noted.length, 'a signal raised at collection is kept, not recomputed later');
     assert.match(noted[0].note, /onsite: "/);
-  } finally {
-    await watcher.close();
-  }
+  });
 });

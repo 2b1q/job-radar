@@ -1,18 +1,11 @@
 // The way in to the employer, kept in the row rather than in one call's answer.
 //
-// The store deduplicates by company + title, so a posting that two sources both
-// publish is stored once - and until now, whichever copy arrived second was
-// dropped whole. That is right for a title and a salary, which the two sources
-// merely restate, and wrong for exactly one field: only some sources carry a
-// link that leaves the board for the employer's own application, and dropping
-// that copy dropped the only reason such a source is worth reading.
+// A merged copy used to be dropped whole - right for a title, wrong for the one
+// field only some sources carry. The link now lands in the stored row, whichever
+// copy arrives first, and nothing else about the row changes.
 //
-// The link now lands in the stored row. The row is not otherwise touched: no
-// duplicate, no rewritten title, no lost status. And it lands there whichever
-// copy arrives first, which is the property this file exists to hold.
-//
-// No network. The store is imported after JOBS_DB_PATH is set, because it opens
-// its database at import time.
+// No network. The store is imported after JOBS_DB_PATH is set: it opens its
+// database at import time.
 
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
@@ -23,8 +16,7 @@ import { test } from 'node:test';
 
 const DB = join(mkdtempSync(join(tmpdir(), 'jobs-apply-')), 'jobs.db');
 
-// A store as it looked before these columns existed, carrying a row with a
-// hand-set status. Importing the module has to migrate it in place.
+// A store from before these columns, with a hand-set status to preserve.
 {
   const db = new DatabaseSync(DB);
   db.exec(`CREATE TABLE jobs (
@@ -77,7 +69,7 @@ test('the board copy first: the employer link is added to the row it merges into
   const kept = row('w3:1');
   assert.match(kept.apply_url, /greenhouse\.io/, 'the way in is in the row now');
   assert.equal(kept.apply_from, 'ats:gh:twinco:1', 'and says which record brought it');
-  // The merge adds one field and touches nothing else.
+  // One field added, nothing else touched.
   assert.equal(kept.url, 'https://board.invalid/jobs/1', 'the board url is not substituted');
   assert.equal(kept.source, 'w3');
   assert.equal(kept.skills, 'Node.js');
@@ -100,7 +92,7 @@ test('the employer copy first: the row has the way in from the start', () => {
 });
 
 test('either order ends in one row with a way in to the employer', () => {
-  // The property, stated once and checked against both histories above.
+  // The property itself, against both histories above.
   for (const n of [1, 2]) {
     const found = rows("SELECT apply_url FROM jobs WHERE company = ?", `TwinCo${n}`);
     assert.equal(found.length, 1, `TwinCo${n} is stored once`);
@@ -109,8 +101,7 @@ test('either order ends in one row with a way in to the employer', () => {
 });
 
 test('a merge never writes over a link the row already has', () => {
-  // Two sources offering one is not a reason to prefer the newer, and a link
-  // somebody has already followed is not something to swap under them.
+  // Two sources offering one is no reason to prefer the newer.
   filterFresh([fromEmployer(3)]);
   const before = row('ats:gh:twinco:3').apply_url;
   filterFresh([{ ...fromEmployer(3), id: 'ats:ashby:twinco:3', url: 'https://jobs.ashbyhq.com/twinco/3' }]);
@@ -119,9 +110,8 @@ test('a merge never writes over a link the row already has', () => {
 });
 
 test('a row stored before the columns existed keeps its status and its NULL', () => {
-  // Not backfilled, and not guessed at: whether a stored url reaches the
-  // employer is the adapter's judgement, and the store does not hold one. NULL
-  // here reads as "not recorded", the way runs.requests does.
+  // Not backfilled: whether a url reaches the employer is the adapter's
+  // judgement. NULL reads as "not recorded", the way runs.requests does.
   const old = row('25000900');
   assert.equal(old.status, 'applied', 'the migration lost nothing');
   assert.equal(old.apply_url, null);
@@ -129,7 +119,7 @@ test('a row stored before the columns existed keeps its status and its NULL', ()
 });
 
 test('the store can be asked the question, not just one run answer', () => {
-  // The whole point of moving the link out of the answer and into the row.
+  // The point of moving the link out of the answer and into the row.
   const counted = stats().withApplyAtEmployer;
   const w3 = counted.find((c) => c.source === 'w3');
   const ats = counted.find((c) => c.source === 'ats');

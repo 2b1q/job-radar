@@ -6,6 +6,7 @@ node_modules/
 # vocabularies you care about. Yours, not the repository's. Only the example
 # version is published.
 profiles.json
+profiles.json*
 
 # The store. It holds which vacancies were applied to, rejected and skipped -
 # a record of a job search, not source.

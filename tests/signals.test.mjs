@@ -1,17 +1,8 @@
-// The three things a human currently opens a posting to find out.
+// Signals read out of a posting's text. Every case is a pair: the sentence that
+// should raise the signal and the one that should not.
 //
-// Each of them is a sentence away from its opposite - "hybrid" from "office
-// optional", "strong production experience in Go" from "Go and/or Node.js" -
-// and a title or a tag list settles none of them. So the unit under test is the
-// grammar, and every case here is a pair: the sentence that should raise the
-// signal and the sentence that should not.
-//
-// The vocabulary is the caller's, which is why every call passes its own. No
-// list of stop words is asserted as a default anywhere: a default here would be
-// one person's search compiled into the repository.
-//
-// Text is synthetic. No sentence below is copied from anybody's posting except
-// the E-Verify notice, which is boilerplate US employers publish verbatim.
+// The vocabulary is always passed in - no stop list is a default here.
+// Text is synthetic, except the E-Verify notice, which is published verbatim.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -56,8 +47,7 @@ test('office presence is raised where it is required', () => {
 });
 
 test('and not where the office is an offer', () => {
-  // The distinction the whole detector exists for. Every one of these names an
-  // office and none of them asks anybody to come in.
+  // Each names an office; none asks anybody to come in.
   for (const sentence of [
     'An office in Lisbon is available and coming in is optional',
     'We are a remote-first company with an on-site option if you prefer',
@@ -78,8 +68,7 @@ test('a language stated as the requirement is raised', () => {
 });
 
 test('a language offered as an alternative is not', () => {
-  // "X and/or Y" is a choice, not a wall, and this is the case that a title and
-  // a tag list get wrong: both would report the language either way.
+  // "X and/or Y" is a choice, not a wall - the case a tag list gets wrong.
   for (const sentence of [
     'You will work with Go and/or Node.js on our services',
     'Experience with Go or TypeScript is welcome',
@@ -90,8 +79,7 @@ test('a language offered as an alternative is not', () => {
 });
 
 test('an alternative in one sentence does not hide a requirement in another', () => {
-  // Postings do both, and stopping at the first mention would read the friendly
-  // sentence and miss the binding one.
+  // Stopping at the first mention would read the friendly sentence, not the binding one.
   const found = detectSignals(
     'Our stack is Go and/or Node.js. Deep production experience in Go is required.',
     { languages: ['Go'] },
@@ -101,32 +89,28 @@ test('an alternative in one sentence does not hide a requirement in another', ()
 });
 
 test('a language name inside a longer word is not a mention of it', () => {
-  // `\b` does not separate Go from Golang, and a repository that reported one as
-  // the other would be flagging the wrong postings for the right reason.
+  // `\b` does not separate Go from Golang.
   assert.deepEqual(detectSignals('We are going to Golang conferences', { languages: ['Go'] }), []);
-  // And a name whose own characters are not word characters still matches.
+  // A name whose own characters are not word characters still matches.
   assert.equal(detectSignals('Deep experience in C++ is required', { languages: ['C++'] }).length, 1);
 });
 
 test('a language named in passing is not a requirement', () => {
-  // Measured in the wild before it was fixed: `Go` raised on "candidates will go
-  // through a shared interview process". A flag that fires on the verb is one a
-  // reader learns to ignore, which costs more than the flag was worth.
+  // Measured in the wild: `Go` raised on "candidates will go through...".
+  // A flag that fires on the verb is one a reader learns to ignore.
   for (const sentence of [
     'Candidates will go through a shared interview process',
     'We will go over the roadmap in your first week',
   ]) {
     assert.deepEqual(detectSignals(sentence, { languages: ['Go'] }), [], sentence);
   }
-  // And what the thing is built in still counts, even without the word
-  // "experience" anywhere near it.
+  // What the thing is built in still counts.
   assert.equal(detectSignals('Our backend is written in Go', { languages: ['Go'] }).length, 1);
   assert.equal(detectSignals('You will need solid Rust', { languages: ['Rust'] }).length, 1);
 });
 
 test('a hyphenated compound is a different word, not the language', () => {
-  // Measured on a live run before it was fixed: `Go` raised on "experienced
-  // go-to-market operators", on a posting with no Go in it anywhere.
+  // Measured live: `Go` raised on "experienced go-to-market operators".
   for (const sentence of [
     'Experienced go-to-market operators who have scaled a product',
     'A hands-on role with a go-live date in March',

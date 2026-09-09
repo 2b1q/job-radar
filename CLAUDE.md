@@ -17,7 +17,7 @@ is `notes/`.
 |---|---|
 | Install | `pnpm install` |
 | Run MCP | `node --experimental-sqlite server.mjs` |
-| Tests | `pnpm test` (`node --test`; the flag is in `package.json`) |
+| Tests | `pnpm test` (`node --test`; the flags are in `package.json`, `--test-timeout` among them - see [Testing](#testing)) |
 | Smoke, one source | `node smoke.mjs af` · `TM_COOKIE=... node smoke.mjs tm [category]` · `node smoke.mjs w3 [tag]` · `node smoke.mjs sol [term]` · `node smoke.mjs hc [term]` · `node smoke.mjs ats` (each falls back to what the profile names for THAT source) |
 | Store state | `node --experimental-sqlite -e "import('./store.mjs').then(s=>console.log(s.stats()))"` |
 
@@ -200,6 +200,16 @@ Do not commit, amend, push, or create a branch unless asked in that message.
 - A skipped test must be visible: print how many were skipped and why. `OK (skipped=12)` is
   not `OK`
 - Cover the seam, not each side of it: feed one module's output straight into its consumer
+- **The seam test starts real server processes, so closing them is not optional.** A
+  client that is not closed leaves a server running and `node --test` will not exit
+  while it is: a suite that passed every test and still hangs. One orphaned runner sat
+  at PPID 1 on a full core for three days. So the test has one way to start a server
+  and it closes in a `finally`, and `pnpm test` carries `--test-timeout` so a hang
+  fails with a name instead of running forever
+- **`--test-force-exit` was tried for the same problem and rejected.** It ends the run
+  while files are still reporting: three runs of this suite gave 247, 254 and 251 tests,
+  each claiming `fail 0`. A flag that silently skips tests and calls it a pass is worse
+  than the hang it prevents
 
 ## What the boards have already taught us
 

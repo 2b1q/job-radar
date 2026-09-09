@@ -1,16 +1,8 @@
-// career.habr.com: the record, and the two fields it is honest about.
+// career.habr.com: the record, and the two fields it is honest about -
+// `applyAtEmployer: false` (the card links to the board, never to the employer)
+// and a salary with no period, which keeps it out of `salaryMinUsd`.
 //
-// This source covers a market the other four do not reach, and it does NOT lead
-// to an employer's own application: the card carries one link, to the board's
-// own page, and the application is placed there. `applyAtEmployer: false` is a
-// measurement rather than a default, and it is the reason this board ranks below
-// one whose links leave for the employer.
-//
-// The second care is money. The record carries an amount and a currency and
-// states no period at all, so nothing enters a field named after one.
-//
-// No network: the fixture is the API's own shape, filled with invented companies
-// and invented ids, and `search` is driven with a stubbed fetch.
+// No network. The fixture is the API's own shape with invented companies and ids.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -39,8 +31,7 @@ test('the shape matches the other adapters exactly', () => {
 });
 
 test('no record here reaches the employer, and every record says so', () => {
-  // The criterion this source is judged on, and it fails it. Saying so is the
-  // point: a shortlist built on a false true is a pile of dead ends.
+  // The criterion this source is judged on, and it fails it. Saying so is the point.
   for (const j of jobs) {
     assert.equal(j.applyAtEmployer, false);
     assert.match(j.url, /^https:\/\/career\.habr\.com\/vacancies\/\d+$/);
@@ -71,13 +62,12 @@ test('the one boolean the board states about the arrangement is copied, not read
 });
 
 test('the qualification ids are the board own, gap included', () => {
-  // Read out of the board's filter schema. The missing 2 is the board's, and a
-  // contiguous guess here would send a value the board answers with zero.
+  // From the board's own filter schema. The missing 2 is the board's, not a typo.
   assert.deepEqual(QUALIFICATIONS, { intern: 1, junior: 3, middle: 4, senior: 5, lead: 6 });
 });
 
-// The rest drives the page loop, because `found` against `collected` is what
-// tells a narrowed query from an empty market and it only exists in `search`.
+// The page loop: `found` against `collected` is what tells a narrowed query
+// from an empty market, and it only exists in `search`.
 const stub = (pages, { totalResults = 57, totalPages = 3 } = {}) => {
   const urls = [];
   globalThis.fetch = async (url) => {
@@ -110,8 +100,7 @@ test('a walk that reaches the total is complete', async () => {
 const nextPage = envelope.list.map((job) => ({ ...job, id: job.id + 500 }));
 
 test('the walk stops at the board last page rather than asking past it', async () => {
-  // Past the last page this board answers 404, and a 404 is an error here - so
-  // the loop has to honour `meta.totalPages` instead of finding out.
+  // Past its last page this board answers 404, so the loop honours meta.totalPages.
   const urls = stub([envelope.list, nextPage], { totalResults: 50, totalPages: 2 });
   await search({}, 9);
   assert.deepEqual(urls.map((u) => new URL(u).searchParams.get('page')), ['1', '2']);

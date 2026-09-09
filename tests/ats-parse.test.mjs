@@ -1,19 +1,10 @@
-// The employer watchlist: three providers, one record shape, and the one field
-// no job board in this repository can offer.
+// The employer watchlist: three providers, one record shape, and the field no
+// board here can offer - `applyAtEmployer: true`, asserted for every provider.
 //
-// `applyAtEmployer` is true here and it is not a courtesy: the url addresses the
-// employer's own instance of their own applicant tracking system. That is what
-// the source exists for, so it is asserted for every provider rather than for a
-// sample.
+// The other half is the text: only the employer's own posting carries the
+// sentences the signals read, so the seam is tested here, not just the detector.
 //
-// The second reason it exists is the text. A board restates a posting; an
-// employer publishes it, and the sentences that decide a posting - the work
-// authorisation notice, the office requirement, the language of the stack - are
-// only in the published version. So the seam is tested here, not just the
-// detector: fixture in, signals out.
-//
-// No network. The fixtures are the providers' own shapes with invented
-// companies, invented ids and invented postings.
+// No network. The fixtures are the providers' shapes with invented postings.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -94,10 +85,8 @@ test('no provider publishes a skill list, and none is invented', () => {
 });
 
 test('a posting body arrives twice-escaped from one provider and is read as text', () => {
-  // `&lt;p&gt;` has to become `<p>` before it can become text, so this provider
-  // needs a pass the other two do not. Asserted on the body the adapter hands
-  // over rather than on the quote: whoever reads the text next decodes it once
-  // more, which would hide a body still full of markup here.
+  // `&lt;p&gt;` must become `<p>` before it becomes text. Asserted on the body the
+  // adapter hands over: the next reader decodes again and would hide the markup.
   const [raw] = PROVIDERS.greenhouse.list(PAYLOAD.greenhouse);
   const { text } = PROVIDERS.greenhouse.record(raw, ENTRY.greenhouse);
   assert.doesNotMatch(text, /[<>]|&lt;|&gt;|&amp;/);
@@ -120,8 +109,7 @@ test('the three signals come out of a real posting body, quoted', () => {
 });
 
 test('the posting next to it raises none of them, on the same three settings', () => {
-  // Remote, office optional, and "Go and/or Node.js". Metadata cannot tell these
-  // two postings apart; the text can.
+  // Remote, office optional, "Go and/or Node.js". Metadata cannot tell the two apart.
   const open = recordsOf('greenhouse', SIGNALS)[1];
   assert.deepEqual(open.signals, []);
   assert.equal(open.note, null);
@@ -140,8 +128,7 @@ test('a provider that publishes no body raises nothing rather than guessing', ()
   }
 });
 
-// The walk over companies. `pages` means companies here, and the totals have to
-// keep saying which is which.
+// The walk over companies: `pages` means companies here.
 function stub(payloads = PAYLOAD) {
   const asked = [];
   globalThis.fetch = async (url) => {
@@ -171,8 +158,7 @@ test('a walk cut short says so instead of reading as the whole watchlist', async
 });
 
 test('a query is a local filter here, and the answer says how much it dropped', async () => {
-  // No provider offers a search parameter, so a query that silently narrowed the
-  // result would be the board's own answer in shape and nobody's in fact.
+  // No provider offers a search parameter, so a silent narrowing would look like theirs.
   stub();
   const out = await search({ watchlist: [ENTRY.greenhouse], query: 'platform' }, 1);
   assert.equal(out.found, 9, 'still what the employer has open');
@@ -186,8 +172,8 @@ test('an unknown company is an error, not an employer with nothing open', async 
 });
 
 test('a redirect is an unknown company too, and is never followed', async () => {
-  // One provider answers an unknown subdomain with a redirect to its own
-  // marketing site. Followed, that parses as "this company has no openings".
+  // One provider redirects an unknown subdomain to marketing; followed, that
+  // parses as "this company has no openings".
   const seen = [];
   globalThis.fetch = async (url, init) => {
     seen.push(init.redirect);

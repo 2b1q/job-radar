@@ -1,17 +1,8 @@
-// What a request becomes for the two sources added last, and what the profile is
-// refused for.
+// What a request becomes for the two newest sources, and what a profile is
+// refused for. These boards answer an unknown VALUE with a silent zero, so
+// everything checkable without a request is checked before the run starts.
 //
-// Both boards belong to the class this repository keeps finding: an unknown
-// parameter NAME is accepted and dropped, and an unknown VALUE is answered with
-// a silent zero. The second is the one that reads as "the market is empty", so
-// every value that CAN be checked without a request is checked here, before the
-// run starts.
-//
-// The third case is the query on AgileFluent, which is not a keyword search at
-// all. Measurements in notes/agilefluent.md; what they mean for a caller is
-// asserted below.
-//
-// No network, and no personal profile: every case is a profile in the fixture.
+// No network, no personal profile: every case is a profile in the fixture.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -39,8 +30,7 @@ test('a grade the board does not have is refused here, not answered with zero', 
 test('the remote preset is the only one this board can express', async () => {
   const { hcParams } = await load('watcher');
   assert.equal(hcParams({ preset: 'remote' }).remote, true);
-  // Stubs, and that is a measurement: the board's place dimension is its own
-  // city taxonomy and it has no notion of where a company has its roots.
+  // The others are stubs: this board has a city taxonomy, not countries or roots.
   for (const preset of ['anywhere', 'countries', 'ruroots']) {
     assert.equal(hcParams({ preset }).remote, undefined, preset);
   }
@@ -69,8 +59,7 @@ test('no watchlist is an empty one, and the caller decides what that means', asy
 });
 
 test('a provider nobody wrote an adapter for is refused at load', async () => {
-  // Checked here rather than in the adapter: the entry would otherwise reach the
-  // walk and fail after the other companies had already been read and paid for.
+  // At load, not mid-walk: otherwise it fails after other companies are paid for.
   const { watchlist } = await load('badprovider');
   assert.throws(() => watchlist(), /"workday", which is not one of/);
 });
@@ -102,9 +91,8 @@ test('a signal named with nothing to look for is refused', async () => {
   assert.throws(() => wrong.signalConfig(), /must be a list of language names/);
 });
 
-// AgileFluent's `query` is an ordered phrase search: the words have to be
-// adjacent and in order, so a stack typed as a query is a phrase nobody wrote
-// and the board answers it with a zero. The counts are in notes/agilefluent.md.
+// AgileFluent's `query` is an ordered phrase search - adjacent words, in order -
+// so a stack typed as a query is a phrase nobody wrote. Counts in notes/.
 test('a single term reaches the board as its search', async () => {
   const { afFilters } = await load('watcher');
   assert.equal(afFilters({ query: 'node.js' }).searchQuery, 'node.js');

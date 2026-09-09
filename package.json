@@ -11,7 +11,7 @@
   "scripts": {
     "start": "node --experimental-sqlite server.mjs",
     "smoke": "node --experimental-sqlite smoke.mjs",
-    "test": "node --experimental-sqlite --test"
+    "test": "node --experimental-sqlite --test --test-timeout=60000"
   },
   "engines": {
     "node": ">=22.5.0"
