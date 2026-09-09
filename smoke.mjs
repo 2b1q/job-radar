@@ -4,6 +4,8 @@
 //   TM_COOKIE='...' node smoke.mjs tm [category]
 //   node smoke.mjs w3 [tag]
 //   node smoke.mjs sol [term]
+//   node smoke.mjs hc [term]
+//   node smoke.mjs ats
 //
 // The two boards that are addressed by their own taxonomy take it as the second
 // argument, and fall back to the first entry the profile names for THAT board -
@@ -13,10 +15,13 @@
 // The query comes from the active profile, so this exercises the same path a
 // tool call takes rather than a stack somebody hard-coded here once.
 import * as agilefluent from './adapters/agilefluent.mjs';
+import * as ats from './adapters/ats.mjs';
+import * as habrcareer from './adapters/habrcareer.mjs';
 import * as solana from './adapters/solana.mjs';
 import * as talentmove from './adapters/talentmove.mjs';
 import * as web3career from './adapters/web3career.mjs';
-import { CATEGORIES, PROFILE, afFilters, skillsFor, solParams, tmParams } from './params.mjs';
+import { CATEGORIES, PROFILE, afFilters, hcParams, signalConfig, skillsFor, solParams,
+         tmParams, watchlist } from './params.mjs';
 
 const which = process.argv[2] || 'af';
 const arg = process.argv[3];
@@ -62,7 +67,25 @@ if (which === 'af') {
   const term = arg || skillsFor('sol')[0] || '';
   const params = solParams({ preset: 'remote', query: term });
   await show(`sol (${term || 'no term'})`, await solana.count(params), await solana.search(params, 1));
+} else if (which === 'hc') {
+  // Free text plus whatever the profile's grades map to; the board's skill ids
+  // are its own, so they come from skills.hc rather than from any shared list.
+  const params = hcParams({ preset: 'remote', query: arg || '', skills: skillsFor('hc') });
+  await show(`hc (${arg || 'no term'})`, (await habrcareer.count(params)).found,
+             await habrcareer.search(params, 1));
+} else if (which === 'ats') {
+  // No taxonomy and no argument: the watchlist IS the query, and an empty one is
+  // configuration missing rather than a company with nothing open.
+  const employers = watchlist();
+  if (!employers.length) {
+    console.error('ats needs a watchlist: give the profile a `watchlist` of '
+      + '{ provider, slug } entries - see profiles.example.json');
+    process.exit(2);
+  }
+  const one = employers.slice(0, 1);
+  await show(`ats (${one[0].provider}/${one[0].slug})`, (await ats.count({ watchlist: one })).found,
+             await ats.search({ watchlist: one, signalConfig: signalConfig() }, 1));
 } else {
-  console.error(`unknown board "${which}" - one of: af, tm, w3, sol`);
+  console.error(`unknown source "${which}" - one of: af, tm, w3, sol, hc, ats`);
   process.exit(2);
 }

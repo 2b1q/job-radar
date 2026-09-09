@@ -1,0 +1,51 @@
+{
+  "apiVersion": "1",
+  "jobs": [
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "title": "Backend Engineer",
+      "department": "Engineering",
+      "team": "Core",
+      "employmentType": "FullTime",
+      "location": "Porto",
+      "secondaryLocations": [
+        {
+          "location": "Remote"
+        }
+      ],
+      "publishedAt": "2026-09-04T08:00:00.000+00:00",
+      "isListed": true,
+      "isRemote": true,
+      "workplaceType": "Remote",
+      "jobUrl": "https://jobs.ashbyhq.com/deltalabs/aaaaaaaa-0000-4000-8000-000000000001",
+      "applyUrl": "https://jobs.ashbyhq.com/deltalabs/aaaaaaaa-0000-4000-8000-000000000001/application",
+      "descriptionPlain": "We build billing services. You will own the API surface. Our office in Porto is open and attendance is optional. We work in TypeScript; familiarity with Go and/or Rust is a plus.",
+      "compensation": {
+        "compensationTierSummary": "€60K – €80K",
+        "compensationTiers": [],
+        "summaryComponents": []
+      }
+    },
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000002",
+      "title": "Data Engineer",
+      "department": "Data",
+      "team": "Data",
+      "employmentType": "FullTime",
+      "location": "Riga",
+      "secondaryLocations": [],
+      "publishedAt": "2026-09-05T08:00:00.000+00:00",
+      "isListed": true,
+      "isRemote": false,
+      "workplaceType": "Hybrid",
+      "jobUrl": "https://jobs.ashbyhq.com/deltalabs/aaaaaaaa-0000-4000-8000-000000000002",
+      "applyUrl": "https://jobs.ashbyhq.com/deltalabs/aaaaaaaa-0000-4000-8000-000000000002/application",
+      "descriptionPlain": "This is a hybrid role based in Riga. You will need strong production experience in Scala.",
+      "compensation": {
+        "compensationTierSummary": null,
+        "compensationTiers": [],
+        "summaryComponents": []
+      }
+    }
+  ]
+}

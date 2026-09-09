@@ -6,8 +6,12 @@
     "",
     "The three profiles below are unrelated on purpose: the file is a schema, not",
     "a shortlist. `active` picks the default; JOBS_PROFILE overrides it per run.",
+    "Every value here is an illustration - replace them, do not inherit them.",
     "",
-    "roles / grades        searched as job title words on boards that search titles",
+    "roles / grades        searched as job title words on boards that search titles.",
+    "                      `grades` also becomes career.habr.com's qualification",
+    "                      filter, which knows intern, junior, middle, senior and",
+    "                      lead and answers anything else with zero results",
     "relocationCountries   ISO-3166 alpha-3, used by the `countries` preset",
     "skills                board tag slugs, PER BOARD. Vocabularies are not",
     "                      portable: the same technology is spelled differently",
@@ -15,13 +19,13 @@
     "                      rather than an error, and web3.career answers a slug",
     "                      it does not have with a redirect to /404. Either a",
     "                      plain list, used for every board, or a map keyed by",
-    "                      source - af, tm, w3, sol - with `default` for the",
-    "                      rest. A board with its own list does not also get the",
-    "                      default, which is what lets one board's slug sent to",
-    "                      another be refused here instead of failing mid-run.",
+    "                      source - af, tm, w3, sol, hc, ats - with `default` for",
+    "                      the rest. A board with its own list does not also get",
+    "                      the default, which is what lets one board's slug sent",
+    "                      to another be refused here instead of failing mid-run.",
     "                      What an entry MEANS is the board's own business: a tag",
     "                      page slug on w3, a filter slug on tm, one free-text",
-    "                      search term on sol",
+    "                      search term on sol, a NUMERIC term id on hc",
     "categories            names for board taxonomy ids, so a query reads",
     "                      `category: \"data\"` instead of `38467`. The ids here",
     "                      are TalentMove's; list them with",
@@ -33,7 +37,31 @@
     "                      only union tags, so an intersection is a second query",
     "                      or a check on what came back. Each group is an OR,",
     "                      because one idea is usually spread over several",
-    "                      interchangeable tags"
+    "                      interchangeable tags",
+    "watchlist             the employers the `ats` source follows: one entry per",
+    "                      company instance, `provider` one of greenhouse, ashby,",
+    "                      bamboohr, and `slug` that company's own instance name -",
+    "                      the subdomain or board path in the careers URL. `name`",
+    "                      is optional and only changes how the company is",
+    "                      labelled. Whose openings you follow is a shortlist, so",
+    "                      it lives here rather than in the repository, and the",
+    "                      slugs below are placeholders that will answer 404.",
+    "                      These links go to the employer's own application, which",
+    "                      is why applyAtEmployer is true for every record",
+    "signals               what to look for in a posting's own text, quoted back",
+    "                      in `note` and never acted on. Raised only where the",
+    "                      source publishes a description, which today is `ats`.",
+    "                      `phrases` maps a name you choose to the phrases that",
+    "                      raise it - the entry below is the sentence US employers",
+    "                      put on a posting that requires the right to work there.",
+    "                      `onsite` turns on office-presence detection, which",
+    "                      honours qualifiers: `hybrid` and `three days a week in",
+    "                      the office` raise it, `office optional` does not.",
+    "                      `languages` names the backend languages that disqualify",
+    "                      a posting FOR YOU - a language offered as an",
+    "                      alternative (`Go and/or Node.js`) does not raise it,",
+    "                      one stated as the requirement does. All three lists are",
+    "                      yours; the grammar around them is the repository's"
   ],
   "active": "dba",
   "profiles": {
@@ -41,7 +69,7 @@
       "roles": ["Database Administrator", "Database Engineer"],
       "grades": ["middle", "senior"],
       "relocationCountries": ["deu", "nld"],
-      "skills": { "default": ["postgresql", "oracle"], "w3": ["postgres"], "sol": ["database"] },
+      "skills": { "default": ["postgresql", "oracle"], "w3": ["postgres"], "sol": ["database"], "hc": ["1024"] },
       "categories": { "data": 38467 },
       "tagGroups": {
         "rdbms": ["PostgreSQL", "Oracle", "MySQL", "MS SQL"],
@@ -68,6 +96,21 @@
       "tagGroups": {
         "android": ["Kotlin", "Jetpack Compose", "Gradle", "Android SDK"],
         "quality": ["Unit Testing", "CI/CD", "Espresso"]
+      },
+      "watchlist": [
+        { "provider": "greenhouse", "slug": "example-co", "name": "Example Co" },
+        { "provider": "ashby", "slug": "example-labs" },
+        { "provider": "bamboohr", "slug": "example-group" }
+      ],
+      "signals": {
+        "phrases": {
+          "usWorkAuthorization": [
+            "This employer participates in E-Verify",
+            "Form I-9"
+          ]
+        },
+        "onsite": true,
+        "languages": ["Go", "Scala"]
       }
     }
   }

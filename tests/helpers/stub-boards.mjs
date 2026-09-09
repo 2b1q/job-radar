@@ -57,9 +57,35 @@ const tmTwin = JSON.stringify({
     + '</article>',
 });
 
+// career.habr.com answers its own front end's JSON. One page, and the fixture's
+// own totals, so the walk ends where the board says it does.
+const hcPage = () => {
+  const envelope = JSON.parse(read('hc-vacancies.json'));
+  envelope.meta = { totalResults: envelope.list.length, perPage: 25, currentPage: 1, totalPages: 1 };
+  return JSON.stringify(envelope);
+};
+
+// The employer watchlist. The Greenhouse instance carries the same posting the
+// other two boards already published, under the employer's own link - which is
+// the case the store has to say something about rather than merge in silence.
+const ghTwin = JSON.stringify({
+  jobs: [{
+    id: 7000500, title: TWIN.title, company_name: TWIN.company,
+    absolute_url: 'https://job-boards.greenhouse.io/twinco/jobs/7000500',
+    location: { name: 'Remote' }, offices: [], departments: [],
+    first_published: '2026-09-04T00:00:00-04:00', updated_at: '2026-09-04T00:00:00-04:00',
+    content: '&lt;p&gt;This is a hybrid role.&lt;/p&gt;',
+  }],
+  meta: { total: 1 },
+});
+
 globalThis.fetch = async (input, init = {}) => {
   const url = String(input);
   if (url.includes('web3.career')) return reply(url, read('w3-listing.html'));
+  if (url.includes('career.habr.com')) return reply(url, hcPage());
+  if (url.includes('greenhouse.io')) return reply(url, ghTwin);
+  if (url.includes('ashbyhq.com')) return reply(url, read('ats-ashby.json'));
+  if (url.includes('bamboohr.com')) return reply(url, read('ats-bamboohr.json'));
   if (url.includes('api.getro.com')) {
     // jobs.solana.com pages from zero and reports its own total; page 1 is past
     // the end of this fixture, which is how the walk is supposed to stop.

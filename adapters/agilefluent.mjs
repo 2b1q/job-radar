@@ -120,6 +120,13 @@ function normalize(job) {
 
 export async function count(filters) {
   const { totalCount } = await post('/jobs/count', { filters });
+  // `search` reports this as the board's own total, so an envelope that stopped
+  // carrying it would leave "how many are there" reading as zero or as absent,
+  // next to a collected count that looks like an answer.
+  if (!Number.isInteger(totalCount)) {
+    throw new Error('af: /jobs/count answered without a totalCount - the count '
+      + 'envelope changed');
+  }
   return totalCount;
 }
 
@@ -132,6 +139,13 @@ export async function count(filters) {
 export async function search(filters, maxPages = 5) {
   const out = [];
   const noRepeat = pageRepeatGuard('af');
+  // One extra request per search, and worth it: `/jobs/search` states only
+  // `hasMore`, so without this the answer could say how much was collected and
+  // never how much there was. The board's `searchQuery` is an ordered phrase
+  // match, so a query narrows hard and often to nothing - and "we collected
+  // none" and "the board has none" are the two readings that a silent zero
+  // leaves a caller to choose between. Budget in notes/request-budget.md.
+  const total = await count(filters);
   for (let page = 1; page <= maxPages; page++) {
     const { data, hasMore } = await post('/jobs/search', { filters, pagination: { page, limit: 50 } });
     // Promised more and delivered nothing: the shape moved, or paging broke.
@@ -152,5 +166,9 @@ export async function search(filters, maxPages = 5) {
     if (!hasMore) break;
     if (page < maxPages) await http.throttle();
   }
+  // What the board says the filters matched, next to what was actually
+  // collected - the same pair the other adapters report.
+  out.found = total;
+  out.complete = out.length >= total;
   return out;
 }

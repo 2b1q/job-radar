@@ -146,3 +146,73 @@ The 15 self-merges are the board republishing its own postings under a second id
 - a company relisting, and `count: 411` includes both copies. The id index cannot
 see those; the key can, which is the first time the second key has earned its
 keep inside one source rather than across two.
+
+## What a merge now adds to the row it merges into
+
+A merge drops the copy that arrived second, which is right for a title, a
+salary and a location — two sources merely restating the same posting. It was
+wrong for exactly one field.
+
+Only some sources carry a link that leaves for the employer's own application:
+`ats` for every record, `sol` for most, and no board in this repository for any.
+When such a copy arrived second it was dropped whole, and the store kept a row
+pointing back at a board. The link lived in that one call's answer and left with
+it, so the day after a run nothing could be asked of the store about it — which
+is the only reason a source of employer-side links is worth reading at all.
+
+**So the row gains a field rather than losing the copy.** `apply_url` holds the
+way in to the employer, `apply_from` names the record it came from:
+
+| | `apply_url` | `apply_from` |
+|---|---|---|
+| the row's own source carries the link | its own url | null |
+| a merge recovered it from another copy | that copy's url | that copy's id |
+| nothing offers one | null | null |
+
+### Why this shape and not one of the other two
+
+**Replacing `url`** was the obvious move and is the one the repository forbids:
+*a link is never substituted for another*. The board url is what the board
+published, `jobs_mark_status` and a human's bookmarks point at it, and swapping
+it under them to gain a second link loses a first.
+
+**A boolean beside `url`** would say that a way in exists and not where it is,
+which leaves the reader exactly where they started — opening the posting to find
+out.
+
+The pair is not a new idea here either. It is `company`/`company_from`, which
+already recovers an employer name a board did not state and records which record
+it came from, for the same reason: **a value that arrived from somewhere else has
+to say so.** One pattern used twice, rather than a second one invented.
+
+Two rules the write follows. It only ever fills an empty column — `AND apply_url
+IS NULL` is in the statement, so two sources offering a link is not a reason to
+prefer the newer, and a link somebody has already followed is not swapped under
+them. And it writes nothing else: the same merge that adds the link leaves the
+title, the source, the skills and any hand-set status exactly as they were.
+
+The order the two copies arrive in no longer changes the outcome. The board copy
+first and the employer copy second recovers the link on the merge; the employer
+copy first stores it as the row's own; either way there is one row and it has the
+way in.
+
+### What happens to rows that were already in the store
+
+**Nothing, and deliberately.** The two columns are added by the same idempotent
+migration as the others, and every existing row gets NULL.
+
+They are not backfilled, because the store cannot honestly compute the value.
+Whether a stored url reaches the employer is the adapter's judgement — for one
+board it is a hostname comparison, for another it is *always false*, for a third
+*nobody has ever checked* — and reproducing that here would put a copy of four
+adapters' rules in the persistence layer, where they would drift.
+
+So NULL means **"not recorded"**, not "does not reach the employer", the same
+distinction `runs.requests` makes for runs written before it was counted. A row
+stored before this existed gains the link the first time another source offers
+the same posting, which is the path that matters: the rows worth recovering are
+the ones an ATS copy will merge into. The rest keep a link back to their board,
+which is what they always had.
+
+`jobs_stats` reports `withApplyAtEmployer` per source, counting only rows that
+actually carry one — so the gap is visible rather than implied.

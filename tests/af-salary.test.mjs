@@ -87,8 +87,12 @@ test('a yen posting comes out of a search with an empty USD field', async () => 
       salaryLabel: '$173–255k / год', salaryMinUsd: 173000,
       createdAtIso: '2026-09-04T00:00:00.000Z' },
   ];
-  globalThis.fetch = async () => ({ ok: true, status: 200,
-                                    json: async () => ({ data: board, hasMore: false }) });
+  // `search` asks for the board's total before it walks the pages, so the count
+  // envelope has to be answered too - it is a different shape from a page.
+  globalThis.fetch = async (url) => ({ ok: true, status: 200,
+                                       json: async () => (String(url).endsWith('/jobs/count')
+                                         ? { totalCount: board.length }
+                                         : { data: board, hasMore: false }) });
 
   const { search } = await import('../adapters/agilefluent.mjs');
   const [yen, dollars] = await search({ roles: [] }, 1);

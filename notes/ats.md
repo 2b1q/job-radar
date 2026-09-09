@@ -1,0 +1,122 @@
+# The employer watchlist
+
+Back to the [README](../README.md).
+
+Every job board in this repository was measured on one question — does its apply
+link reach the employer, or only the board — and the boards added for coverage
+all answer *no* (see [habrcareer.md](habrcareer.md)). The place where the answer
+is *yes* is not a board at all: it is the employer's own applicant tracking
+system, and three of the common ones publish an unauthenticated list per company.
+
+    GET https://boards-api.greenhouse.io/v1/boards/<slug>/jobs?content=true
+    GET https://api.ashbyhq.com/posting-api/job-board/<slug>?includeCompensation=true
+    GET https://<slug>.bamboohr.com/careers/list
+
+`applyAtEmployer` is `true` for every record from all three, and it is not a
+courtesy: the url addresses the company's own instance.
+
+## Why this is one source and not a new interface
+
+The difference is real — a board answers "who is hiring", a watchlist answers
+"what is open at these companies" — and it turned out to live entirely in the
+parameters. Three dialects of one request, one record shape, and `pages` meaning
+*how many companies to read* rather than *how many pages to walk*. Nothing
+downstream needed anything: not the store, not the dedup key, not the four
+tools. A second interface would have bought a second code path for a word.
+
+One thing did change, and it is about ORDER rather than about the key. The dedup
+key is `company + title` as everywhere else, and here it matches *better*,
+because the ATS record is the original that boards republish. But the store keeps
+the row that arrived first, and an ATS copy arriving second was dropped along
+with the one thing it was added for.
+
+So a merge now ADDS the way in to the employer to the row it merges into, in
+`apply_url`, and rewrites nothing else. Either arrival order ends in one row that
+has it. The shape, the two alternatives it was chosen over, and what happens to
+rows stored before the column existed are in [dedup.md](dedup.md).
+
+## What each provider states, and what it does not
+
+| | Greenhouse | Ashby | BambooHR |
+|---|---|---|---|
+| total | `meta.total` | none — its own list length | `meta.totalCount` |
+| paging | none: the whole list, one request | none | none |
+| search parameter | none | none | none |
+| company name | `company_name` | not stated | not stated |
+| posting body | `content`, twice escaped | `descriptionPlain` | **none in the list** |
+| publication date | `first_published` | `publishedAt` | not stated |
+| work mode | not stated | `workplaceType` | `isRemote`, often null |
+| salary | not in this payload | `compensation.compensationTierSummary` | not in this payload |
+| skills or tags | none | none | none |
+| unknown company | **404** | **404** | **302** to its marketing site |
+
+Three consequences, in the order they bite:
+
+- **Redirects are not followed.** A followed 302 does not fail — it parses as a
+  page with no postings, which reads as a company with nothing open. `redirect:
+  'manual'`, and any 3xx is "no such instance".
+- **No provider states a period beside an amount**, so `salaryMinUsd` is null on
+  every record here and the figure stays in the label.
+- **A query is a local filter.** None of the three offers a search parameter, so
+  a query narrows the titles after they arrive, and the answer reports
+  `filtered` separately from `found`. A local filter and a board's own answer are
+  different facts about a run.
+
+Greenhouse sends the posting body HTML-escaped inside a JSON string, so it
+arrives twice encoded: `&lt;p&gt;` has to become `<p>` before it can become
+text. BambooHR's list carries no body at all — its per-posting detail endpoint
+does, at one request per vacancy, which is a whole budget for one company's
+descriptions and is not spent.
+
+## The signals, and why they live here
+
+The three things a human currently opens a posting to read — a work
+authorisation requirement, an office-presence requirement, and which backend
+language the requirements actually name — are only in the posting's own text. A
+board restates a posting; an employer publishes it. So the signals are raised
+where the text is, which today is this source and, of the three providers, the
+two that publish a body.
+
+Which phrases and which languages matter is configured in the profile, because
+that is one person's search. What is NOT configured is the grammar, because that
+is the part a title and a tag list get wrong:
+
+| raises it | does not |
+|---|---|
+| `This is a hybrid role based in Warsaw` | `An office in Lisbon is available and coming in is optional` |
+| `Two days per week in the office is expected` | `We hire from Portugal, Spain and Poland` |
+| `Strong production experience in Go is required` | `You will work with Go and/or Node.js` |
+
+Nothing is dropped for a signal. The finding carries the sentence it was found
+in, and the decision stays with the person reading it.
+
+### What the language signal actually costs, measured on a live read, 2026-09-09
+
+Two public Greenhouse and Ashby instances, 276 postings, asking for `Go`, `Rust`,
+`Scala` and `Java`:
+
+| rule | postings flagged | of those, wrong |
+|---|---|---|
+| the name appears as a word | 35 | most of them |
+| ...and not in a hyphenated compound | 30 | `go-to-market` gone |
+| ...and the sentence contains a requirement word | 24 | still "assess the core **skills**" reaching back to a verb |
+| ...and the requirement word comes BEFORE the name, within 60 characters | **3** | 3 |
+
+The three that survive are all `Go` — "you **go** beyond dashboards" after
+"Strong analytical skills", and two of "writing specs before **building**". A
+two-letter English verb that is also a language name is not separable from its
+own grammar without parsing the sentence, and this is a flag with a quote beside
+it: a reader dismisses one of these in a second, which is cheaper than the
+parser. `Rust`, `Scala` and `Java` produced no false positive at any stage.
+
+The rule is a cue BEFORE the name and close to it, because that is the
+construction being looked for. "The sentence contains a requirement word
+somewhere" was tried and is in the table: any long enough sentence eventually
+contains one.
+
+## What is still unmeasured
+
+Whether any of the three rate limits an anonymous reader, and at what. A
+watchlist read is one request per company rather than a walk, so the totals are
+small — but small is not the same as measured, and the pace is set at the public
+boards' rather than at what these hosts would tolerate.

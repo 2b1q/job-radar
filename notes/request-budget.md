@@ -65,6 +65,38 @@ Current timings, and the ceiling:
 | `af` | 3500 ms | 2500 ms | |
 | `w3` | 3500 ms | 2500 ms | |
 | `sol` | 3500 ms | 2500 ms | a JSON API with no observed limit, kept at the pace of the other public board rather than at the pace it would tolerate |
+| `hc` | 3500 ms | 2500 ms | a JSON API with no observed limit, kept at the pace of the other public boards |
+| `ats` | 3500 ms | 2500 ms | three hosts rather than one, and a read is one request per company rather than a walk |
+
+### What the two sources added last cost
+
+**`hc` — career.habr.com.** A page is 25 records and `perPage` is not
+negotiable, so a full read of a 1252-record listing would be 51 requests, which
+is past `MAX_REQUESTS_PER_CALL`. A narrowed query is the intended use; the
+ceiling is what stops a wide one from returning a confident half.
+
+Reconnaissance cost 21 requests across two sessions — robots, the filter schema,
+the parameter tolerance table, the paging edges — with no refusal at any point.
+
+**`ats` — the employer watchlist.** One request per company, and none of the
+three providers pages. So a watchlist of N companies costs exactly N requests,
+plus N again if the count tool is called first. `pages` is the walk over
+companies and bounds it the same way it bounds a page loop.
+
+Reconnaissance cost 8 requests: three list endpoints, three unknown-slug probes,
+one detail endpoint, one repeat.
+
+### What `af` now costs, and why it grew
+
+A search on `af` costs **one request more than it used to**: `search` opens with
+a `/jobs/count` before it walks the pages. `/jobs/search` states only `hasMore`,
+so without it the answer could say how much was collected and never how much
+there was — and this board's `searchQuery` is a phrase match that narrows to zero
+easily (notes/agilefluent.md). A five-page search goes from 5 requests to 6.
+
+What could be cut instead: nothing that keeps the pair honest. The alternative
+was to report `found` as the collected count, which is what it did, and which is
+the reading that made a narrowed query look like an empty market.
 
 ### What jobs.solana.com cost to add
 

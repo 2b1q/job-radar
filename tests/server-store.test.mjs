@@ -113,6 +113,21 @@ test('a cross-board duplicate is reported, not silently dropped', async () => {
   assert.equal(merged[0].into, '26100500');
 });
 
+test('the fifth source reaches the store, and fills the skills the store keeps', async () => {
+  // career.habr.com is here for a market the other four do not reach at all. It
+  // does NOT reach the employer, and the record says so rather than passing the
+  // board's own page off as an apply link.
+  const hc = await search({ source: 'hc', pages: 1 });
+  assert.equal(hc.collected, 2);
+  assert.equal(hc.returned, 2);
+  for (const j of hc.jobs) assert.equal(j.applyAtEmployer, false);
+
+  const stored = rows("SELECT id, skills FROM jobs WHERE source = 'hc'");
+  assert.equal(stored.length, 2, 'the rows are in the store, not only in the answer');
+  for (const r of stored) assert.match(r.id, /^hc:\d+$/);
+  assert.equal(stored.find((r) => r.skills)?.skills, 'Node.js, PostgreSQL');
+});
+
 test('every board that stores a run stores what it cost', async () => {
   // NULL here is what made a metered budget invisible. `requests` is now checked
   // before the store is touched, so an uncounted run is an error rather than a
@@ -120,7 +135,7 @@ test('every board that stores a run stores what it cost', async () => {
   await search({ source: 'af', pages: 1 });
   await search({ source: 'tm', pages: 1 });
   const runs = rows('SELECT source, requests FROM runs');
-  assert.deepEqual([...new Set(runs.map((r) => r.source))].sort(), ['af', 'sol', 'tm', 'w3']);
+  assert.deepEqual([...new Set(runs.map((r) => r.source))].sort(), ['af', 'hc', 'sol', 'tm', 'w3']);
   for (const r of runs) {
     assert.ok(Number.isInteger(r.requests) && r.requests > 0,
               `${r.source} logged a run costing ${r.requests}`);
@@ -137,5 +152,96 @@ test('and the budget adds up to what the runs actually spent', async () => {
   for (const s of stats.requestsLast24h) {
     assert.equal(s.unrecorded, 0, `${s.source} has a run that did not say what it cost`);
   }
-  assert.deepEqual(stats.bySource.map((s) => s.source).sort(), ['af', 'sol', 'tm', 'w3']);
+  assert.deepEqual(stats.bySource.map((s) => s.source).sort(), ['af', 'hc', 'sol', 'tm', 'w3']);
+});
+
+// The employer watchlist is configuration, and the profile that carries one in
+// the shipped example is not the active one - so this source is exercised the
+// way a user reaches it, by naming the profile.
+test('the watchlist source reaches the store, with its signals and its link', async () => {
+  const watcher = new Client({ name: 'server-store-test-ats', version: '0' });
+  await watcher.connect(new StdioClientTransport({
+    command: process.execPath,
+    args: ['--experimental-sqlite', '--import', join(HERE, 'helpers/stub-boards.mjs'), 'server.mjs'],
+    cwd: ROOT,
+    env: { ...process.env, JOBS_DB_PATH: DB, JOBS_PROFILES: 'profiles.example.json', JOBS_PROFILE: 'android' },
+  }));
+  try {
+    const res = await watcher.callTool({ name: 'jobs_search', arguments: { source: 'ats', pages: 1 } });
+    const ats = JSON.parse(res.content[0].text);
+
+    // The stub's Greenhouse instance publishes the posting the other two boards
+    // already put in the store. The row that is there wins - it may carry a
+    // status somebody set by hand - but the link that reaches the employer is
+    // the one thing this source was added for, so it is added to that row.
+    assert.equal(ats.collected, 1);
+    assert.equal(ats.returned, 0, 'the posting is already stored under a board id');
+    const [merged] = ats.skipped.merged;
+    assert.equal(merged.into, '26100500');
+    assert.match(merged.atEmployer, /greenhouse\.io/);
+    assert.equal(merged.stored, true);
+
+    // And through the seam: in the store, not only in the answer that reported
+    // it. This is what a shortlist asks the day after the run.
+    const [kept] = rows('SELECT url, apply_url, apply_from FROM jobs WHERE id = ?', '26100500');
+    assert.match(kept.apply_url, /greenhouse\.io/, 'the way in survives the call');
+    assert.equal(kept.apply_from, 'ats:gh:example-co:7000500');
+    assert.doesNotMatch(kept.url, /greenhouse\.io/, 'and the original link is not substituted');
+  } finally {
+    await watcher.close();
+  }
+});
+
+test('every source the schema declares is one the server can actually dispatch', async () => {
+  // The source list is written twice: `SOURCE_CODES` in params.mjs, which the
+  // tool schema is derived from, and the adapter map in server.mjs, which the
+  // dispatch reads. A code in one and not the other is silent in whichever
+  // direction it goes - an adapter nobody can reach, or a source the schema
+  // accepts and the dispatch then calls a method on `undefined`. Calling every
+  // declared source is the cheapest way to hold the two together, and it fails
+  // the moment somebody adds one to a single place.
+  const watcher = new Client({ name: 'server-store-test-sources', version: '0' });
+  await watcher.connect(new StdioClientTransport({
+    command: process.execPath,
+    args: ['--experimental-sqlite', '--import', join(HERE, 'helpers/stub-boards.mjs'), 'server.mjs'],
+    cwd: ROOT,
+    env: { ...process.env, JOBS_DB_PATH: DB, JOBS_PROFILES: 'profiles.example.json', JOBS_PROFILE: 'android' },
+  }));
+  try {
+    const { tools } = await watcher.listTools();
+    const declared = tools.find((t) => t.name === 'jobs_search').inputSchema.properties.source.enum;
+    assert.ok(declared.length >= 6, 'the schema names every source');
+    for (const source of declared) {
+      const res = await watcher.callTool({ name: 'jobs_count', arguments: { source } });
+      assert.equal(res.isError, undefined, `${source}: ${res.content[0].text}`);
+    }
+  } finally {
+    await watcher.close();
+  }
+});
+
+test('and a watchlist posting nobody has stored keeps its note in the store', async () => {
+  const watcher = new Client({ name: 'server-store-test-ats2', version: '0' });
+  await watcher.connect(new StdioClientTransport({
+    command: process.execPath,
+    args: ['--experimental-sqlite', '--import', join(HERE, 'helpers/stub-boards.mjs'), 'server.mjs'],
+    cwd: ROOT,
+    env: { ...process.env, JOBS_DB_PATH: DB, JOBS_PROFILES: 'profiles.example.json', JOBS_PROFILE: 'android' },
+  }));
+  try {
+    // Two companies: the first is the twin above, the second is new. The profile
+    // asks for office presence, and the second company's postings say enough for
+    // it - quoted, and left for a human to decide about.
+    const res = await watcher.callTool({ name: 'jobs_search', arguments: { source: 'ats', pages: 2 } });
+    const ats = JSON.parse(res.content[0].text);
+    assert.ok(ats.returned > 0, 'the second company answered');
+    assert.equal(ats.complete, false, 'two of the three watched companies were read');
+    for (const j of ats.jobs) assert.equal(j.applyAtEmployer, true);
+
+    const noted = rows("SELECT id, note FROM jobs WHERE source = 'ats' AND note IS NOT NULL");
+    assert.ok(noted.length, 'a signal raised at collection is kept, not recomputed later');
+    assert.match(noted[0].note, /onsite: "/);
+  } finally {
+    await watcher.close();
+  }
 });

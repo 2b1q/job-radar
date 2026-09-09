@@ -47,6 +47,20 @@ if (!columns.has('dup_key')) db.exec('ALTER TABLE jobs ADD COLUMN dup_key TEXT')
 // this column, a vacancy from a board that never names an employer would simply
 // have one, and nobody would be able to tell how.
 if (!columns.has('company_from')) db.exec('ALTER TABLE jobs ADD COLUMN company_from TEXT');
+// The way in to the employer's own application, and where it was found - the
+// same pair as `company`/`company_from`, for the same reason. A posting reaches
+// this store from whichever source saw it first, and only some sources carry a
+// link that leaves the board; keeping that link in the ROW rather than in one
+// call's answer is what lets it be asked for tomorrow. `apply_from` is null when
+// the row's own source stated it and names the other record when a merge
+// recovered it.
+//
+// Rows written before these columns existed keep NULL, which reads as "not
+// recorded" rather than as "does not reach the employer" - the same distinction
+// `runs.requests` makes. Nothing is derived for them: whether a url reaches the
+// employer is the adapter's judgement, and the store does not hold one.
+if (!columns.has('apply_url')) db.exec('ALTER TABLE jobs ADD COLUMN apply_url TEXT');
+if (!columns.has('apply_from')) db.exec('ALTER TABLE jobs ADD COLUMN apply_from TEXT');
 const runCols = new Set(db.prepare('PRAGMA table_info(runs)').all().map((c) => c.name));
 if (!runCols.has('source')) db.exec("ALTER TABLE runs ADD COLUMN source TEXT NOT NULL DEFAULT 'af'");
 // How many HTTP requests a run cost. Throttling bounds the rate; nothing bounded
@@ -198,14 +212,28 @@ const today = () => new Date().toISOString();
 const hasSeen = db.prepare('SELECT 1 FROM jobs WHERE id = ?');
 const hasKey = db.prepare('SELECT id FROM jobs WHERE dup_key = ?');
 const insertJob = db.prepare(
-  `INSERT OR IGNORE INTO jobs (id, source, company, title, url, country, salary_label, skills, dup_key, company_from, first_seen)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  `INSERT OR IGNORE INTO jobs (id, source, company, title, url, country, salary_label, skills, dup_key, company_from, note, apply_url, first_seen)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+);
+// The one thing a merge writes to the row it is merging into, and only where
+// there was nothing there before.
+const setApplyUrl = db.prepare(
+  'UPDATE jobs SET apply_url = ?, apply_from = ? WHERE id = ? AND apply_url IS NULL'
 );
 const setStatus = db.prepare('UPDATE jobs SET status = ?, note = COALESCE(?, note) WHERE id = ?');
 const insertRun = db.prepare(
   `INSERT INTO runs (ts, source, preset, since, found, fresh, requests)
    VALUES (?, ?, ?, ?, ?, ?, ?)`
 );
+
+/**
+ * The record's own way in to the employer, or null.
+ *
+ * Only where the adapter said so. `applyAtEmployer` is `false` on the boards
+ * that keep the employer behind their own form and `null` on the one where
+ * nobody has classified the links, and neither of those is a link to store.
+ */
+const employerUrl = (job) => (job.applyAtEmployer === true && job.url ? job.url : null);
 
 // Return only the jobs not seen before; record the fresh ones as seen ('new').
 //
@@ -230,14 +258,33 @@ export function filterFresh(jobs) {
     const key = dupKey(job.company, job.title);
     const already = key && hasKey.get(key);
     if (already) {
-      skipped.merged.push({ id: job.id, into: already.id });
+      // The row that is already there wins - it may carry a status somebody set
+      // by hand - and none of its fields is rewritten. One thing is ADDED to it:
+      // a way in to the employer's own application, where the copy being merged
+      // has one and the stored row does not.
+      //
+      // Without this the link lived in one call's answer and left with it, and
+      // the store kept a row pointing back at a board. That is the whole reason
+      // a source of employer-side links was added, so it belongs in the row.
+      // Written into an empty column only, never over an existing one: two
+      // sources offering a link is not a reason to prefer the newer.
+      // `AND apply_url IS NULL` in the statement is the whole condition, and
+      // `changes` is the answer: the row either had no way in and now has one,
+      // or it already had one and keeps it. Asking first and then writing would
+      // be the same test written twice.
+      const link = employerUrl(job);
+      const recovered = link ? setApplyUrl.run(link, job.id, already.id).changes > 0 : false;
+      skipped.merged.push({
+        id: job.id, into: already.id,
+        ...(link ? { atEmployer: link, stored: recovered } : {}),
+      });
       continue;
     }
     fresh.push(job);
     insertJob.run(
       job.id, job.source || 'af', job.company, job.title, job.url, job.country,
       job.salaryLabel, (job.skills || []).join(', ') || null, key,
-      job.companyFrom ?? null, today()
+      job.companyFrom ?? null, job.note ?? null, employerUrl(job), today()
     );
   }
   fresh.skipped = skipped;
@@ -297,6 +344,14 @@ export function stats() {
   const total = db.prepare('SELECT COUNT(*) AS n FROM jobs').get().n;
   const byStatus = db.prepare('SELECT status, COUNT(*) AS n FROM jobs GROUP BY status').all();
   const bySource = db.prepare('SELECT source, COUNT(*) AS n FROM jobs GROUP BY source').all();
+  // How many stored postings have a way in to the employer's own application,
+  // whichever source turned out to carry it. This is the question a shortlist
+  // asks the day after a run, and until the link was stored it could not be
+  // asked at all. Rows written before the column keep NULL and are not counted:
+  // "not recorded" and "does not reach the employer" are different facts.
+  const withApplyAtEmployer = db.prepare(
+    'SELECT source, COUNT(*) AS n FROM jobs WHERE apply_url IS NOT NULL GROUP BY source'
+  ).all();
   const lastRun = db.prepare('SELECT * FROM runs ORDER BY ts DESC LIMIT 1').get() || null;
-  return { total, byStatus, bySource, lastRun, requestsLast24h: requestBudget(24) };
+  return { total, byStatus, bySource, withApplyAtEmployer, lastRun, requestsLast24h: requestBudget(24) };
 }

@@ -28,21 +28,37 @@ read yesterday.
 - **It refuses to invent.** A salary the board quoted in a currency it did not name
   stays out of the comparable field, and a location is passed on as the board's
   claim rather than as a fact
+- **It reads the posting, not only the card.** Where a source publishes the
+  vacancy's own text, what people open a vacancy to check — whether it demands
+  the right to work in one country, whether the office is a requirement or an
+  offer, which language the requirements actually name — comes back as a flag
+  and the sentence it was found in. Which words matter is yours to configure,
+  and nothing is ever dropped for one: the quote is there to be read
 - **It fails out loud.** A page that parses to nothing, a paging parameter the
   board ignored, a run that cannot say what it cost — each of those is an error
   here, not a quiet empty answer that looks like a slow day
 
-## The boards
+## The sources
 
-| code | board | what you need |
+| code | source | what you need |
 |---|---|---|
 | `af` | AgileFluent | nothing |
 | `tm` | TalentMove | a paid subscription, its session cookie in `TM_COOKIE` |
 | `w3` | web3.career | nothing |
 | `sol` | jobs.solana.com | nothing |
+| `hc` | career.habr.com | nothing |
+| `ats` | the employers you name, on their own Greenhouse, Ashby or BambooHR | a watchlist in your profile |
+
+The last one is not a board. It is a list of companies you want to follow, read
+from the applicant tracking system each of them actually hires through — which
+is why it is the one source where every apply link reaches the employer.
 
 Each has its own vocabulary and its own quirks; what was measured on each one is
 in [notes/](notes/).
+
+A client reads the list of sources once, when it starts the server. **Restart the
+server process after adding a source**, or its tools will keep offering the ones
+they were started with.
 
 ## The tools
 
@@ -57,13 +73,16 @@ in [notes/](notes/).
 
     pnpm install
     cp profiles.example.json profiles.json    # what to look for is configuration
+    cp .env.example .env                      # and credentials are not configuration
     pnpm test                                 # offline: no network, no model
     node --experimental-sqlite server.mjs     # MCP over stdio
 
 Node 22.5+, no build step. `profiles.json` is where the search lives — roles,
-grades, the countries you would move to, and the tags each board knows by its own
-name; every key is documented in `profiles.example.json`. Registering the server
-with an MCP client: [SETUP.md](SETUP.md).
+grades, the countries you would move to, the tags each board knows by its own
+name, the employers you follow, and the phrases worth flagging; every key is
+documented in `profiles.example.json`. Board sessions and keys are environment
+variables and never live in a file here; `.env.example` names them. Registering
+the server with an MCP client: [SETUP.md](SETUP.md).
 
 ## What it is not
 
@@ -71,15 +90,16 @@ with an MCP client: [SETUP.md](SETUP.md).
   against what that board actually answers
 - **Not a salary converter.** Nothing is turned from one currency into another; an
   invented number is the one that gets quoted later
-- **Not a verifier.** What a board says about a location or a work mode is passed
-  on as the board's claim, and marked as unverified
+- **Not a verifier.** What a source says about a location or a work mode is
+  passed on as its claim, and marked as unverified. A flag raised on a posting's
+  text is a quote to read, not a decision that has been made for you
 - **Not an application bot.** It finds and it remembers; applying is yours
 
 ## Where to look next
 
 - [SETUP.md](SETUP.md) — registering the server with an MCP client
 - `profiles.example.json` — every configuration key, with what a wrong value does
-- [notes/](notes/) — what was measured on each board, and under what conditions
+- [notes/](notes/) — what was measured on each source, and under what conditions
 - [CLAUDE.md](CLAUDE.md) — how the code is organised and how to work in it
 
 ## License

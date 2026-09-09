@@ -10,6 +10,12 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// Two board vocabularies that belong to their adapters and are checked here,
+// because a wrong value in the profile is cheaper to refuse at load than to
+// discover halfway through a run that has already spent requests.
+import { PROVIDER_NAMES } from './adapters/ats.mjs';
+import { QUALIFICATIONS as HC_QUALIFICATIONS } from './adapters/habrcareer.mjs';
+
 // What to look for is configuration, not code. Roles, grades, the countries you
 // would move to and the tag vocabularies you care about live in profiles.json,
 // which is gitignored; profiles.example.json ships as the template. Hard-coding
@@ -56,7 +62,7 @@ const RELOCATION_COUNTRIES = PROFILE.relocationCountries || [];
  * The boards this server speaks to. Kept here rather than in `server.mjs`
  * because the profile is validated against it before any adapter is wired up.
  */
-export const SOURCE_CODES = ['af', 'tm', 'w3', 'sol'];
+export const SOURCE_CODES = ['af', 'tm', 'w3', 'sol', 'hc', 'ats'];
 
 /** One list of slugs, checked entry by entry. */
 function skillList(value, where, file) {
@@ -182,9 +188,30 @@ const TM_PRESETS = {
   ruroots: { format: 'fully-remote' },     // stub: see above
 };
 
+// `searchQuery` is a PHRASE, not a set of keywords, and the difference is the
+// whole reason a query on this board looked broken. The words must be adjacent
+// AND in order, and `node.js` is one token - so "backend node" matches none of
+// the postings "backend node.js" matches, and swapping two words changes the
+// answer. A stack typed as a query is therefore a phrase nobody wrote, and the
+// board answers zero without a word. Counts in notes/agilefluent.md.
+//
+// Refused here rather than sent: a caller who means "these two technologies"
+// gets a sentence explaining what this board would have done with it, instead of
+// an empty answer that reads as an empty market. A phrase that is genuinely
+// wanted is still available - `af.search` reports what the board matched, so a
+// deliberate one can be checked against the board's own total.
 function afFilters({ preset = 'remote', since = 'week', query, minSalary }) {
   const filters = { roles: ROLES, grades: GRADES, since, ...AF_PRESETS[preset] };
-  if (query) filters.searchQuery = String(query).slice(0, 255);
+  const phrase = query === undefined || query === null ? '' : String(query).trim();
+  if (phrase) {
+    if (/\s/.test(phrase)) {
+      throw new Error(`af: query is an ordered phrase search on this board, not a `
+        + `list of keywords - "${phrase}" would be matched as consecutive words `
+        + 'and answered with a silent zero. Pass one term, or narrow with '
+        + 'preset, since and minSalary instead');
+    }
+    filters.searchQuery = phrase.slice(0, 255);
+  }
   if (minSalary) filters.salary_min = Number(minSalary);
   return filters;
 }
@@ -298,6 +325,141 @@ export function resolveTags(wanted) {
     if (!key) return [];
     return TAG_GROUPS[key] ?? [key];
   });
+}
+
+// career.habr.com narrows by free text, by qualification and by work mode, and
+// by nothing else this repository can use. Two presets are stubs and that is a
+// measurement rather than a gap: the board's place dimension is its own city
+// taxonomy, not a country list, and it has no notion of where a company has its
+// roots. The country cut therefore happens downstream, on each record's own
+// location.
+const HC_PRESETS = {
+  remote: { remote: true },
+  anywhere: {},                 // both, which is the board's default
+  countries: {},                // stub: a city taxonomy is not a country filter
+  ruroots: {},                  // stub: the board has no such dimension
+};
+
+/**
+ * The board's qualification ids, resolved from the profile's own grade words.
+ *
+ * A closed list, checked here, because this board answers a value it does not
+ * have with a silent zero - `qid=2` returns 0 exactly like `qid=999`, and the
+ * gap at 2 is the board's own. That is the shape of wrong answer this repository
+ * keeps finding, and it costs a request to discover remotely and nothing to
+ * refuse locally.
+ */
+function hcQualifications(grades) {
+  return grades.map((grade) => {
+    const id = HC_QUALIFICATIONS[String(grade).trim().toLowerCase()];
+    if (id) return id;
+    throw new Error(`hc: "${grade}" is not a grade this board has. It knows `
+      + `${Object.keys(HC_QUALIFICATIONS).join(', ')}, and answers anything else `
+      + 'with zero results rather than with an error');
+  });
+}
+
+/**
+ * career.habr.com takes free text, a qualification set and a work mode.
+ *
+ * `skills` here are the board's numeric term ids, not the slugs that appear in a
+ * skill's own href: `skills[]=nodejs` answers zero as readily as an id the board
+ * does not have. Shape-checked rather than whitelisted, for the same reason the
+ * other board's category ids are - a local list of term ids would go stale the
+ * day a skill is added, while a value that is not an id at all is a mistake with
+ * an address.
+ */
+export function hcParams({ preset = 'remote', query, skills, grades = GRADES }) {
+  const list = (Array.isArray(skills) ? skills : String(skills ?? '').split(','))
+    .map((s) => s.trim()).filter(Boolean);
+  assertBoardSkills('hc', list);
+  for (const id of list) {
+    if (!/^[1-9]\d*$/.test(id)) {
+      throw new Error(`hc: skills are this board's numeric term ids - "${id}" is `
+        + 'not one, and the board answers an unknown skill value with zero '
+        + 'results rather than by ignoring it');
+    }
+  }
+  return {
+    ...HC_PRESETS[preset],
+    query: query ? String(query).trim() : '',
+    qids: hcQualifications(grades),
+    skills: list,
+  };
+}
+
+/**
+ * The employers to watch, from the profile.
+ *
+ * A watchlist is somebody's shortlist of companies, so it lives in the gitignored
+ * profile like every other thing this repository refuses to hard-code. Validated
+ * at load, because a misspelled provider is silence twice over: the entry would
+ * reach the adapter and fail in the middle of a run, after the other companies
+ * had already been read and paid for.
+ */
+export function watchlist() {
+  const entries = PROFILE.watchlist ?? [];
+  if (!Array.isArray(entries)) {
+    throw new Error(`${PROFILE.source}: watchlist must be a list of `
+      + `{ provider, slug } entries - see profiles.example.json`);
+  }
+  return entries.map((entry, i) => {
+    const provider = String(entry?.provider ?? '').trim();
+    const slug = String(entry?.slug ?? '').trim();
+    if (!PROVIDER_NAMES.includes(provider)) {
+      throw new Error(`${PROFILE.source}: watchlist[${i}].provider is `
+        + `"${provider}", which is not one of ${PROVIDER_NAMES.join(', ')}`);
+    }
+    // The slug is a hostname component on one provider and a path component on
+    // the others, so anything outside this set is not a company's instance name.
+    if (!/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(slug)) {
+      throw new Error(`${PROFILE.source}: watchlist[${i}].slug is "${slug}", `
+        + "which is not an instance name - it is the company's own subdomain or "
+        + 'board path, letters, digits and hyphens');
+    }
+    return { provider, slug, ...(entry.name ? { name: String(entry.name).trim() } : {}) };
+  });
+}
+
+/**
+ * What to look for in a posting's text, from the profile.
+ *
+ * Which phrases and which languages disqualify a posting is one person's search;
+ * the grammar that tells "office as an option" from "three days in the office"
+ * is not. Only the first half is configured, and an absent key means the signal
+ * was not asked for rather than that its list is empty.
+ */
+export function signalConfig() {
+  const raw = PROFILE.signals;
+  if (raw === undefined || raw === null) return {};
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error(`${PROFILE.source}: signals must be an object with any of `
+      + 'phrases, onsite and languages - see profiles.example.json');
+  }
+  const config = {};
+  if (raw.phrases !== undefined) {
+    if (typeof raw.phrases !== 'object' || Array.isArray(raw.phrases)) {
+      throw new Error(`${PROFILE.source}: signals.phrases maps a name you choose `
+        + 'to the phrases that raise it, e.g. { "workAuthorization": ["E-Verify"] }');
+    }
+    config.phrases = {};
+    for (const [name, phrases] of Object.entries(raw.phrases)) {
+      if (!Array.isArray(phrases) || !phrases.length || phrases.some((p) => typeof p !== 'string' || !p.trim())) {
+        throw new Error(`${PROFILE.source}: signals.phrases.${name} must be a `
+          + 'non-empty list of phrases to look for');
+      }
+      config.phrases[name] = phrases.map((p) => p.trim());
+    }
+  }
+  if (raw.onsite !== undefined) config.onsite = !!raw.onsite;
+  if (raw.languages !== undefined) {
+    if (!Array.isArray(raw.languages) || raw.languages.some((l) => typeof l !== 'string' || !l.trim())) {
+      throw new Error(`${PROFILE.source}: signals.languages must be a list of `
+        + 'language names, e.g. ["Go", "Rust"]');
+    }
+    config.languages = raw.languages.map((l) => l.trim());
+  }
+  return config;
 }
 
 export { ROLES, GRADES, RELOCATION_COUNTRIES, AF_PRESETS, TM_PRESETS, TM_DATES, afFilters, tmParams };

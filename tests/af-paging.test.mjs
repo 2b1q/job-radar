@@ -25,9 +25,17 @@ const job = (id) => ({
 
 // One response per call, in order; past the end the board keeps answering,
 // which is the failure being reproduced rather than an edge case.
-function stub(pages, { hasMoreAfterLast = false } = {}) {
+//
+// `search` opens with a count, because `/jobs/search` states only `hasMore` and
+// the board's own total is what tells a narrowed query from an empty one. That
+// request is answered here and left out of `calls`, which are the page requests
+// these tests are about.
+function stub(pages, { hasMoreAfterLast = false, total = 100 } = {}) {
   const calls = [];
   globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith('/jobs/count')) {
+      return { ok: true, status: 200, json: async () => ({ totalCount: total }) };
+    }
     calls.push(JSON.parse(init.body));
     const i = Math.min(calls.length - 1, pages.length - 1);
     const last = calls.length >= pages.length;
@@ -61,8 +69,32 @@ test('more promised and nothing delivered is an error, not an empty result', asy
 });
 
 test('an empty page with no more promised is an ordinary end of results', async () => {
-  stub([[]], { hasMoreAfterLast: false });
-  assert.deepEqual(await search({ roles: [] }, 2), []);
+  stub([[]], { hasMoreAfterLast: false, total: 0 });
+  const jobs = await search({ roles: [] }, 2);
+  assert.equal(jobs.length, 0);
+  // And the emptiness says which kind it is. The board's own total is what
+  // separates "these filters match nothing" from "we stopped reading", and this
+  // board states one only through its count endpoint.
+  assert.equal(jobs.found, 0);
+  assert.equal(jobs.complete, true);
+});
+
+test('a collected page shorter than the board total is not reported as complete', async () => {
+  // The pair the other adapters report, and the reason a narrowed query on this
+  // board no longer reads as an empty market.
+  stub([[job(1), job(2)]], { hasMoreAfterLast: false, total: 57 });
+  const jobs = await search({ roles: [] }, 1);
+  assert.equal(jobs.found, 57);
+  assert.equal(jobs.length, 2);
+  assert.equal(jobs.complete, false);
+});
+
+test('a count envelope without a total is an error, not an absent found', async () => {
+  globalThis.fetch = async (url) => ({
+    ok: true, status: 200,
+    json: async () => (String(url).endsWith('/jobs/count') ? {} : { data: [job(1)], hasMore: false }),
+  });
+  await assert.rejects(() => search({ roles: [] }, 1), /answered without a totalCount/);
 });
 
 test('hasMore false stops the walk before maxPages', async () => {

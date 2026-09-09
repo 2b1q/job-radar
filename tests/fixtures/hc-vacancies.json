@@ -1,0 +1,101 @@
+{
+  "list": [
+    {
+      "id": 1000000001,
+      "href": "/vacancies/1000000001",
+      "title": "Бэкенд-разработчик (Node.js)",
+      "isMarked": false,
+      "remoteWork": true,
+      "salaryQualification": {
+        "title": "Старший (Senior)",
+        "href": "/vacancies?qid=5"
+      },
+      "publishedDate": {
+        "date": "2026-09-08T12:00:00+03:00",
+        "title": "8 сентября"
+      },
+      "location": null,
+      "company": {
+        "id": 900001,
+        "alias_name": "gammaco",
+        "href": "/companies/gammaco",
+        "title": "GammaCo",
+        "accredited": true
+      },
+      "employment": "full_time",
+      "salary": {
+        "from": 250000,
+        "to": 350000,
+        "currency": "rur",
+        "formatted": "250 000 – 350 000 ₽"
+      },
+      "divisions": [
+        {
+          "title": "Бэкенд разработчик",
+          "href": "/vacancies/spec/backend"
+        }
+      ],
+      "skills": [
+        {
+          "title": "Node.js",
+          "href": "/vacancies/skills/node-js"
+        },
+        {
+          "title": "PostgreSQL",
+          "href": "/vacancies/skills/postgresql"
+        }
+      ],
+      "locations": [
+        {
+          "title": "Москва",
+          "href": "/vacancies?city_id=678"
+        }
+      ],
+      "qualification": "Senior"
+    },
+    {
+      "id": 1000000002,
+      "href": "/vacancies/1000000002",
+      "title": "Frontend Developer",
+      "isMarked": false,
+      "remoteWork": false,
+      "salaryQualification": null,
+      "publishedDate": {
+        "date": "2026-09-07T09:30:00+03:00",
+        "title": "7 сентября"
+      },
+      "location": {
+        "title": "Рига"
+      },
+      "company": {
+        "id": 900002,
+        "alias_name": "deltaco",
+        "href": "/companies/deltaco",
+        "title": "DeltaCo",
+        "accredited": false
+      },
+      "employment": "full_time",
+      "salary": {
+        "from": null,
+        "to": null,
+        "currency": null,
+        "formatted": ""
+      },
+      "divisions": [
+        {
+          "title": "Фронтенд разработчик",
+          "href": "/vacancies/spec/frontend"
+        }
+      ],
+      "skills": [],
+      "locations": null,
+      "qualification": "Middle"
+    }
+  ],
+  "meta": {
+    "totalResults": 57,
+    "perPage": 25,
+    "currentPage": 1,
+    "totalPages": 3
+  }
+}

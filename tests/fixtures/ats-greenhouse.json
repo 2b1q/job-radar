@@ -1,0 +1,55 @@
+{
+  "jobs": [
+    {
+      "id": 7000001,
+      "internal_job_id": 8000001,
+      "requisition_id": "GC-1",
+      "title": "Senior Backend Engineer",
+      "company_name": "GammaCo",
+      "absolute_url": "https://job-boards.greenhouse.io/gammaco/jobs/7000001",
+      "location": {
+        "name": "Hybrid - Lisbon"
+      },
+      "offices": [
+        {
+          "id": 1,
+          "name": "Office - Lisbon",
+          "location": "Lisbon, Portugal"
+        }
+      ],
+      "departments": [
+        {
+          "id": 2,
+          "name": "Engineering"
+        }
+      ],
+      "first_published": "2026-09-01T10:00:00-04:00",
+      "updated_at": "2026-09-03T10:00:00-04:00",
+      "content": "&lt;div&gt;&lt;p&gt;We are hiring a backend engineer.&lt;/p&gt;&lt;p&gt;You will be in the office three days a week in the office with the team.&lt;/p&gt;&lt;p&gt;This employer participates in E-Verify and will provide the federal government with your Form I-9 information to confirm work authorization.&lt;/p&gt;&lt;p&gt;Strong production experience in Go is required.&lt;/p&gt;&lt;/div&gt;"
+    },
+    {
+      "id": 7000002,
+      "internal_job_id": 8000002,
+      "requisition_id": "GC-2",
+      "title": "Platform Engineer",
+      "company_name": "GammaCo",
+      "absolute_url": "https://job-boards.greenhouse.io/gammaco/jobs/7000002",
+      "location": {
+        "name": "Remote - EU"
+      },
+      "offices": [],
+      "departments": [
+        {
+          "id": 2,
+          "name": "Engineering"
+        }
+      ],
+      "first_published": "2026-09-02T10:00:00-04:00",
+      "updated_at": "2026-09-02T10:00:00-04:00",
+      "content": "&lt;div&gt;&lt;p&gt;Fully remote across the EU.&lt;/p&gt;&lt;p&gt;An office in Lisbon is available and coming in is optional.&lt;/p&gt;&lt;p&gt;You will work with Go and/or Node.js on our services.&lt;/p&gt;&lt;/div&gt;"
+    }
+  ],
+  "meta": {
+    "total": 9
+  }
+}

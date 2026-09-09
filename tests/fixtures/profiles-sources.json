@@ -1,0 +1,59 @@
+{
+  "_comment": [
+    "SYNTHETIC fixture for the parameter tests of the two sources added last:",
+    "career.habr.com and the employer watchlist. Each profile is one shape the",
+    "loader has to accept or refuse; none of them describes a real search, and",
+    "the watchlist slugs below are placeholders that answer 404.",
+    "",
+    "The grade lists are the interesting part for hc: this board's qualification",
+    "ids are 1, 3, 4, 5, 6 - with the board's own gap at 2 - and it answers a",
+    "value it does not have with zero results rather than with an error."
+  ],
+  "active": "watcher",
+  "profiles": {
+    "watcher": {
+      "roles": ["Backend Engineer"],
+      "grades": ["middle", "senior"],
+      "skills": { "hc": ["264"], "default": ["node-js"] },
+      "watchlist": [
+        { "provider": "greenhouse", "slug": "example-co", "name": "Example Co" },
+        { "provider": "ashby", "slug": "example-labs" },
+        { "provider": "bamboohr", "slug": "example-group" }
+      ],
+      "signals": {
+        "phrases": { "usWorkAuthorization": ["This employer participates in E-Verify"] },
+        "onsite": true,
+        "languages": ["Go", "Scala"]
+      }
+    },
+    "nowatchlist": {
+      "roles": ["Backend Engineer"],
+      "grades": ["senior"]
+    },
+    "badprovider": {
+      "roles": ["Backend Engineer"],
+      "watchlist": [{ "provider": "workday", "slug": "example-co" }]
+    },
+    "badslug": {
+      "roles": ["Backend Engineer"],
+      "watchlist": [{ "provider": "greenhouse", "slug": "https://example.invalid/boards/x" }]
+    },
+    "badgrade": {
+      "roles": ["Backend Engineer"],
+      "grades": ["principal"]
+    },
+    "badskill": {
+      "roles": ["Backend Engineer"],
+      "grades": ["senior"],
+      "skills": { "hc": ["node-js"] }
+    },
+    "badphrases": {
+      "roles": ["Backend Engineer"],
+      "signals": { "phrases": { "usWorkAuthorization": [] } }
+    },
+    "badlanguages": {
+      "roles": ["Backend Engineer"],
+      "signals": { "languages": "Go" }
+    }
+  }
+}

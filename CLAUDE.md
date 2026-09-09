@@ -1,8 +1,9 @@
 # Claude Project Guide — job-radar
 
-MCP server over several job boards. Four adapters (AgileFluent, TalentMove, web3.career,
-jobs.solana.com), one shared dedup store, stdio protocol glue. Node 22.5+, no build step,
-no TypeScript, `node:sqlite` for state. Package manager: **pnpm**.
+MCP server over several job sources. Six adapters — five boards (AgileFluent, TalentMove,
+web3.career, jobs.solana.com, career.habr.com) and one employer watchlist read from
+Greenhouse, Ashby and BambooHR — one shared dedup store, stdio protocol glue. Node 22.5+,
+no build step, no TypeScript, `node:sqlite` for state. Package manager: **pnpm**.
 
 The responsibility of this repo is not "talk to a board". It is **find what has not been
 seen and remember what was done with it**. The store is the core; adapters are replaceable.
@@ -17,7 +18,7 @@ is `notes/`.
 | Install | `pnpm install` |
 | Run MCP | `node --experimental-sqlite server.mjs` |
 | Tests | `pnpm test` (`node --test`; the flag is in `package.json`) |
-| Smoke, one board | `node smoke.mjs af` · `TM_COOKIE=... node smoke.mjs tm [category]` · `node smoke.mjs w3 [tag]` · `node smoke.mjs sol [term]` (each falls back to what the profile names for THAT board) |
+| Smoke, one source | `node smoke.mjs af` · `TM_COOKIE=... node smoke.mjs tm [category]` · `node smoke.mjs w3 [tag]` · `node smoke.mjs sol [term]` · `node smoke.mjs hc [term]` · `node smoke.mjs ats` (each falls back to what the profile names for THAT source) |
 | Store state | `node --experimental-sqlite -e "import('./store.mjs').then(s=>console.log(s.stats()))"` |
 
 Check `package.json` before guessing a command. Run tests only when asked.
@@ -27,8 +28,8 @@ Check `package.json` before guessing a command. Run tests only when asked.
 ```
 server.mjs        protocol glue only. Adding a board = one line in SOURCES
 params.mjs        query -> board parameters, plus local validation of values the board accepts silently
-adapters/*.mjs    ONE board each: its transport dialect and its parsing. Nothing else
-adapters/_shared/ everything every adapter needs and none of them owns
+adapters/*.mjs    ONE source each: its transport dialect and its parsing. Nothing else
+adapters/_shared/ everything every adapter needs and none of them owns, signals included
 store.mjs         SQLite: seen ids, dup_key, derived employer, statuses, run log, request budget
 ```
 
@@ -43,7 +44,8 @@ The shape every adapter returns:
   format, salaryLabel, salaryMinUsd, skills: [], hasRussianRoots, visa, date }
 ```
 
-`id` carries a source prefix for every board except AgileFluent (`tm:`, `w3:`, `sol:`).
+`id` carries a source prefix for every source except AgileFluent (`tm:`, `w3:`, `sol:`,
+`hc:`, and `ats:<provider>:<company>:`).
 AgileFluent ids stay bare: the store already holds them as plain numbers with statuses
 attached, and prefixing would orphan every mark. A bare number can never equal `tm:...`, so
 they cannot collide.
@@ -226,17 +228,21 @@ Each cost a debugging session. The measurements behind them are in `notes/`.
 ## Standing debt
 
 `_shared/` holds the throttling, the user agents, the request counter, `strip`/`decode`,
-the single `normKey` and both guards. Two things are still per board, and the fourth adapter
-made each a fourth copy:
+the single `normKey`, both guards and the signal detector. Two things are still per source,
+and the fifth and sixth adapters made each a **sixth** copy:
 
-| duplicated four times | belongs in |
+| duplicated six times | belongs in |
 |---|---|
-| the `get` / `post` wrapper: count the request, call fetch, classify the status, throw with the board's context | `_shared/http.mjs` |
+| the `get` / `post` wrapper: count the request, call fetch, classify the status, throw with the source's context | `_shared/http.mjs` |
 | the page loop: fetch, parse, guard, accumulate, throttle | `_shared/paginate.mjs` |
 
-Neither is a mechanical copy — statuses differ per board, and each loop stops on a different
-signal (`hasMore`, `max_pages`, an empty page, a `count`) — which is why they survived. An
-argument for extracting them carefully, not for leaving them.
+Neither is a mechanical copy — statuses differ per source, and each loop stops on a different
+signal (`hasMore`, `max_pages`, an empty page, a `count`, `meta.totalPages`, the end of a
+watchlist) — which is why they survived. The two newest widen the spread rather than repeat
+it: one board answers **404 past its last page** where the others answer an empty list, and
+the watchlist reads one company per request and does not page at all. An argument for
+extracting them carefully, not for leaving them — and the count is now past the number the
+line below calls a defect.
 
 **A third adapter needing something means it was never adapter-specific. Two copies are a
 smell, three are a defect.**

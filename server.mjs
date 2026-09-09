@@ -11,6 +11,8 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 
 import * as agilefluent from './adapters/agilefluent.mjs';
+import * as ats from './adapters/ats.mjs';
+import * as habrcareer from './adapters/habrcareer.mjs';
 import * as solana from './adapters/solana.mjs';
 import * as talentmove from './adapters/talentmove.mjs';
 import * as web3career from './adapters/web3career.mjs';
@@ -18,13 +20,15 @@ import * as store from './store.mjs';
 // Dynamic, so a missing or broken profile reaches the operator as one line
 // rather than as a module-loading stack trace on a transport nobody is reading
 // yet.
-const { SOURCE_CODES, afFilters, resolveTags, solParams, tmParams, w3Tag } = await import('./params.mjs')
+const { SOURCE_CODES, afFilters, hcParams, resolveTags, signalConfig, solParams,
+        tmParams, w3Tag, watchlist } = await import('./params.mjs')
   .catch((err) => {
     console.error(`job-radar: ${err.message}`);
     process.exit(2);
   });
 
-const SOURCES = { af: agilefluent, tm: talentmove, w3: web3career, sol: solana };
+const SOURCES = { af: agilefluent, tm: talentmove, w3: web3career, sol: solana, hc: habrcareer, ats };
+
 
 const json = (obj) => ({ content: [{ type: 'text', text: JSON.stringify(obj, null, 2) }] });
 
@@ -39,17 +43,18 @@ server.registerTool(
   'jobs_count',
   {
     title: 'Count matching jobs',
-    description: 'Quick count for one board. source: af (AgileFluent), tm (TalentMove), w3 (web3.career) or sol (jobs.solana.com). AgileFluent presets: remote, ruroots (russian-roots companies), countries (the relocation list from the active profile), anywhere. TalentMove takes an optional category taxonomy id and skills (slugs from search-skills, comma separated or an array). web3.career ignores presets: it is addressed by tag page, so pass the tag slug as skills. The slugs belong to this board alone; the profile keeps them under skills.w3. jobs.solana.com takes one free-text term - pass it as query or as the first skills entry - plus the remote preset.',
+    description: 'Quick count for one source. source: af (AgileFluent), tm (TalentMove), w3 (web3.career), sol (jobs.solana.com), hc (career.habr.com) or ats (the employer watchlist from the active profile). AgileFluent presets: remote, ruroots (russian-roots companies), countries (the relocation list from the active profile), anywhere. TalentMove takes an optional category taxonomy id and skills (slugs from search-skills, comma separated or an array). web3.career ignores presets: it is addressed by tag page, so pass the tag slug as skills. The slugs belong to this board alone; the profile keeps them under skills.w3. jobs.solana.com takes one free-text term - pass it as query or as the first skills entry - plus the remote preset. career.habr.com takes free text as query, the remote preset, and skills as ITS OWN numeric term ids under skills.hc; the profile grades become its qualification filter. ats reads one company instance per request and counts what those employers have open.',
     inputSchema: {
       source: sourceSchema.optional(),
       preset: presetSchema.optional(),
       since: sinceSchema.optional(),
+      query: z.string().max(255).optional(),
       category: z.string().optional(),
       skills: z.union([z.string(), z.array(z.string())]).optional(),
       date: z.enum(['today', '7days', '30days']).optional(),
     },
   },
-  async ({ source = 'af', preset = 'remote', since = 'week', category, skills, date }) => {
+  async ({ source = 'af', preset = 'remote', since = 'week', query, category, skills, date }) => {
     // A count is one or two requests, but the ceiling belongs on every path: the
     // exception is a call that quietly grows one day and is not noticed.
     const board = SOURCES[source];
@@ -64,7 +69,9 @@ server.registerTool(
         return json({ source, ...counted, ...(ignored.length ? { ignoredSkills: ignored } : {}) });
       }
       if (source === 'tm') return json({ source, ...(await talentmove.count(tmParams({ preset, category, skills, date }))) });
-      const total = await agilefluent.count(afFilters({ preset, since }));
+      if (source === 'hc') return json({ source, preset, ...(await habrcareer.count(hcParams({ preset, query, skills }))) });
+      if (source === 'ats') return json({ source, ...(await ats.count({ watchlist: watchedEmployers() })) });
+      const total = await agilefluent.count(afFilters({ preset, since, query }));
       return json({ source, preset, since, totalCount: total });
     } finally {
       board.endCall();
@@ -108,6 +115,29 @@ async function tmSearch({ preset, category, skills, date, requireTags, pages }) 
   return talentmove.searchIntersect(params, [language, wanted], pages);
 }
 
+// The watchlist is configuration, and an empty one is the silent-zero shape this
+// repository keeps finding: a source with nothing to read answers "no jobs"
+// rather than "nobody told me whom to watch".
+function watchedEmployers() {
+  const employers = watchlist();
+  if (!employers.length) {
+    throw new Error('ats: the active profile names no employers to watch. Add a '
+      + '`watchlist` of { provider, slug } entries - greenhouse, ashby or '
+      + 'bamboohr, with the company\'s own instance name - see '
+      + 'profiles.example.json. Whose openings to follow is yours, not the '
+      + "repository's");
+  }
+  return employers;
+}
+
+// The employer watchlist. `pages` is a walk over COMPANIES here rather than over
+// pages: none of the three providers pages, and none of them offers a search
+// parameter either - so `query` is a local filter over titles and the answer
+// says how many records it dropped.
+async function atsSearch({ query, pages }) {
+  return ats.search({ watchlist: watchedEmployers(), query, signalConfig: signalConfig() }, pages);
+}
+
 // jobs.solana.com takes one search term and a work mode, and nothing else this
 // tool offers reaches it: it has no date filter under any name tried, and its
 // location filter is accepted and dropped. Whatever the caller named beyond the
@@ -123,7 +153,7 @@ server.registerTool(
   'jobs_search',
   {
     title: 'Search jobs',
-    description: 'Search a board and return jobs with real apply URLs. By default returns only jobs never seen before and records them as seen; dedup is shared across boards, so a posting republished on several surfaces once. source: af (AgileFluent), tm (TalentMove), w3 (web3.career, addressed by tag page - pass the tag slug as skills, which belong to this board alone) or sol (jobs.solana.com, one free-text term as query or the first skills entry; it has no date filter, so since is not applied there). Set onlyNew=false to see everything, dryRun=true to not record. TalentMove and web3.career fill the skills field, AgileFluent usually leaves it empty. In the answer, found is the board own total where it states one and collected is what was fetched; complete=false means a page loop stopped short and the result is a lower bound. skipped says why the answer is shorter than what was collected: seen is this board offering the same id again, merged lists postings already stored under another board id. applyAtEmployer says whether a job url opens the employer own application (sol) or only the board (w3, tm); null means nobody checked (af). locationVerified is false everywhere: the location and work mode are what the board states, and three of them have been measured wrong.',
+    description: 'Search a source and return jobs with real apply URLs. By default returns only jobs never seen before and records them as seen; dedup is shared across sources, so a posting republished on several surfaces returns once. source: af (AgileFluent), tm (TalentMove), w3 (web3.career, addressed by tag page - pass the tag slug as skills, which belong to this board alone), sol (jobs.solana.com, one free-text term as query or the first skills entry; it has no date filter, so since is not applied there), hc (career.habr.com, russian-language product companies; free text as query, remote preset, skills as its own numeric term ids under skills.hc) or ats (the employer watchlist from the active profile - Greenhouse, Ashby and BambooHR instances read one company per request, so pages means how many companies to read, and query filters titles locally because no provider offers a search). On af, query is the board own PHRASE search - consecutive words in order - so a multi-word query is refused here rather than answered with a silent zero. Set onlyNew=false to see everything, dryRun=true to not record. tm, w3 and hc fill the skills field; af usually leaves it empty and ats never fills it, because no ATS provider publishes one. In the answer, found is the source own total where it states one and collected is what was fetched; complete=false means a page or company loop stopped short and the result is a lower bound; filtered is how many records a local query dropped on ats. skipped says why the answer is shorter than what was collected: seen is this source offering the same id again, merged lists postings already stored under another id - and a merged entry carrying atEmployer is a posting that reaches the employer directly, with stored=true meaning that link was added to the row it merged into, so it can be asked for again later. applyAtEmployer says whether a job url opens the employer own application: always true on ats, true for most of sol, false on w3, tm and hc, and null on af, where nobody checked. signals and note carry what the posting own text says about work authorisation, office presence and the required backend language, quoted verbatim - they are raised only where the source publishes a description (ats), nothing is ever dropped for them, and which phrases and languages to look for is configured in the profile. locationVerified is false everywhere: the location and work mode are what the source states, and three of them have been measured wrong.',
     inputSchema: {
       source: sourceSchema.optional(),
       preset: presetSchema.optional(),
@@ -157,7 +187,11 @@ server.registerTool(
         ? await tmSearch({ preset, category, skills, date, requireTags, pages })
         : source === 'sol'
           ? await solSearch({ preset, query, skills, pages })
-          : await agilefluent.search(afFilters({ preset, since, query, minSalary }), pages);
+          : source === 'hc'
+            ? await habrcareer.search(hcParams({ preset, query, skills }), pages)
+            : source === 'ats'
+              ? await atsSearch({ query, pages })
+              : await agilefluent.search(afFilters({ preset, since, query, minSalary }), pages);
     const requests = board.requestCount() - before;
     board.endCall();
     // Checked before anything is written: `filterFresh` marks what it stores as
@@ -186,7 +220,7 @@ server.registerTool(
     // the board's own total when it states one, `collected` is what was actually
     // fetched, and the two differing is the whole message.
     const meta = {};
-    for (const key of ['complete', 'sides', 'tagLookups', 'unresolvedSkills', 'ignoredSkills']) {
+    for (const key of ['complete', 'filtered', 'sides', 'tagLookups', 'unresolvedSkills', 'ignoredSkills']) {
       if (all[key] !== undefined) meta[key] = all[key];
     }
     // Why the answer is shorter than what was collected. `merged` is the second
@@ -205,7 +239,7 @@ server.registerTool(
   'jobs_mark_status',
   {
     title: 'Mark job status',
-    description: 'Record a status for a job id: applied | rejected | interview | skip | new. Use to keep the store in sync with the vacancies tracker. AgileFluent ids are bare numbers, TalentMove ids look like tm:266809.',
+    description: 'Record a status for a job id: applied | rejected | interview | skip | new. Use to keep the store in sync with the vacancies tracker. AgileFluent ids are bare numbers; every other source prefixes its own - tm:266809, w3:..., sol:..., hc:..., and ats:<provider>:<company>:<id>.',
     inputSchema: {
       id: z.string(),
       status: z.enum(['applied', 'rejected', 'interview', 'skip', 'new']),
@@ -219,7 +253,7 @@ server.registerTool(
   'jobs_stats',
   {
     title: 'Seen/store stats',
-    description: 'How many jobs are stored, the breakdown by status and by source, and the last run.',
+    description: 'How many jobs are stored, the breakdown by status and by source, how many rows carry a way in to the employer own application (withApplyAtEmployer, by source - rows written before that was recorded are not counted), and the last run.',
     inputSchema: {},
   },
   async () => json(store.stats())
