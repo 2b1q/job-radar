@@ -1,0 +1,15 @@
+{
+  "name": "job-radar",
+  "owner": {
+    "name": "2b1q",
+    "url": "https://github.com/2b1q"
+  },
+  "description": "One plugin: job-radar, an MCP server over several job boards with a local store that remembers what it has already shown you.",
+  "plugins": [
+    {
+      "name": "job-radar",
+      "source": "./",
+      "description": "Search several job boards through one MCP interface, deduplicated across boards, with a local store that remembers every posting you have already seen."
+    }
+  ]
+}

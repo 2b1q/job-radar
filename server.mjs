@@ -6,9 +6,20 @@
 //
 // Run:  node --experimental-sqlite server.mjs
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { z } from 'zod';
+// Dynamic, for the reason `params.mjs` is below: a plugin install clones this
+// repository without installing anything, and a missing dependency reaches the
+// operator as a module-resolution stack trace on a transport nobody is reading.
+const { McpServer, StdioServerTransport, z } = await Promise.all([
+  import('@modelcontextprotocol/sdk/server/mcp.js'),
+  import('@modelcontextprotocol/sdk/server/stdio.js'),
+  import('zod'),
+]).then(([mcp, stdio, zod]) => ({ ...mcp, ...stdio, z: zod.z })).catch(() => {
+  console.error('job-radar: dependencies are not installed. Run `npm install` '
+    + `(or \`pnpm install\`) in ${import.meta.dirname}, then start the server again. `
+    + 'Installing the plugin clones this repository; it does not install its two '
+    + 'dependencies for you.');
+  process.exit(2);
+});
 
 import * as agilefluent from './adapters/agilefluent.mjs';
 import * as ats from './adapters/ats.mjs';
@@ -33,7 +44,7 @@ const SOURCES = { af: agilefluent, tm: talentmove, w3: web3career, sol: solana, 
 const json = (obj) => ({ content: [{ type: 'text', text: JSON.stringify(obj, null, 2) }] });
 
 // The server name is the project; the tool names are not - see CLAUDE.md.
-const server = new McpServer({ name: 'job-radar', version: '2.0.0' });
+const server = new McpServer({ name: 'job-radar', version: '2.1.0' });
 
 const sourceSchema = z.enum(SOURCE_CODES);
 const presetSchema = z.enum(['remote', 'ruroots', 'countries', 'anywhere']);
@@ -43,6 +54,8 @@ server.registerTool(
   'jobs_count',
   {
     title: 'Count matching jobs',
+    // Reads a board and nothing else: no row, no run log, no mark.
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     description: 'Quick count for one source. source: af (AgileFluent), tm (TalentMove), w3 (web3.career), sol (jobs.solana.com), hc (career.habr.com) or ats (the employer watchlist from the active profile). AgileFluent presets: remote, ruroots (russian-roots companies), countries (the relocation list from the active profile), anywhere. On af the profile roles and grades go into every request and BOTH CUT SILENTLY: the board leaves role unset on about half its postings and grade on a third, so a non-empty roles or grades discards those before any other filter runs and nothing in the answer says so. roles is not a vocabulary the board publishes - an unrecognised value crashes jobs_count with HTTP 500 rather than returning zero, and the accepted spellings are exact, case and spaces included. Empty lists filter nothing and are the way to see the whole board. TalentMove takes an optional category taxonomy id and skills (slugs from search-skills, comma separated or an array). web3.career ignores presets: it is addressed by tag page, so pass the tag slug as skills. The slugs belong to this board alone; the profile keeps them under skills.w3. jobs.solana.com takes one free-text term - pass it as query or as the first skills entry - plus the remote preset. career.habr.com takes free text as query and the remote preset; the profile grades become its qualification filter. It has no date filter, so since is not applied there. Its skills are numeric term ids from /api/frontend/suggestions/skills?term=<word>, not the slugs it displays - a slug returns a silent zero. ats reads one company instance per request and counts what those employers have open.',
     inputSchema: {
       source: sourceSchema.optional(),
@@ -153,7 +166,14 @@ server.registerTool(
   'jobs_search',
   {
     title: 'Search jobs',
-    description: 'Search a source and return jobs with real apply URLs. By default returns only jobs never seen before and records them as seen; dedup is shared across sources, so a posting republished on several surfaces returns once. source: af (AgileFluent), tm (TalentMove), w3 (web3.career, addressed by tag page - pass the tag slug as skills, which belong to this board alone), sol (jobs.solana.com, one free-text term as query or the first skills entry; it has no date filter, so since is not applied there), hc (career.habr.com, russian-language product companies; free text as query, remote preset. Like sol it has NO date filter, so since is echoed in the answer and not applied - the results are whatever the board sorts newest first. skills are its own numeric term ids, not the slugs the board shows: a slug in that parameter is answered with a silent zero. Look an id up with /api/frontend/suggestions/skills?term=<word>, which returns value as the id, and keep it under skills.hc) or ats (the employer watchlist from the active profile - Greenhouse, Ashby and BambooHR instances read one company per request, so pages means how many companies to read, and query filters titles locally because no provider offers a search). On af, query is a free-text search that is neither a phrase nor a literal match, and multi-word queries are sent as given - but they narrow very sharply and often to zero (two words survive only where they genuinely sit together in a posting, three words usually return nothing), so start with one word and add another only if the count allows. On hc, query is full text over the whole posting rather than over its stack: a hit need not carry the term in skills at all. Set onlyNew=false to see everything, dryRun=true to not record. tm, w3 and hc fill the skills field; af usually leaves it empty and ats never fills it, because no ATS provider publishes one. In the answer, found is the source own total where it states one and collected is what was fetched; found null with foundUnavailable means the total could not be fetched and the jobs still could - on af the count and search endpoints have been seen disagreeing, so a dead counter no longer hides a working board; complete=false means a page or company loop stopped short and the result is a lower bound; filtered is how many records a local query dropped on ats. skipped says why the answer is shorter than what was collected: seen is this source offering the same id again, merged lists postings already stored under another id - and a merged entry carrying atEmployer is a posting that reaches the employer directly, with stored=true meaning that link was added to the row it merged into, so it can be asked for again later. applyAtEmployer says whether a job url opens the employer own application: always true on ats, true for most of sol, false on w3, tm and hc, and null on af, where nobody checked. signals and note carry what the posting own text says about work authorisation, office presence and the required backend language, quoted verbatim - they are raised where the source publishes text - ats, and af, whose summary keeps an office requirement but not a legal notice - nothing is ever dropped for them, and which phrases and languages to look for is configured in the profile. locationVerified is false everywhere: the location and work mode are what the source states, and three of them have been measured wrong.',
+    // NOT read-only, and the hint says so. This tool records every posting it
+    // returns as seen, which changes what the next call answers - a caller that
+    // trusted a read-only hint here would find a repeated search returning
+    // nothing and read it as an empty market. `dryRun: true` is the read-only
+    // path, and it is a parameter rather than a second tool, so the annotation
+    // has to describe the default.
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    description: 'Search a source and return jobs with real apply URLs. By default returns only jobs never seen before and records them as seen; dedup is shared across sources, so a posting republished on several surfaces returns once. source: af (AgileFluent), tm (TalentMove), w3 (web3.career, addressed by tag page - pass the tag slug as skills, which belong to this board alone), sol (jobs.solana.com, one free-text term as query or the first skills entry; it has no date filter, so since is not applied there), hc (career.habr.com, russian-language product companies; free text as query, remote preset. Like sol it has NO date filter, so since is echoed in the answer and not applied - the results are whatever the board sorts newest first. skills are its own numeric term ids, not the slugs the board shows: a slug in that parameter is answered with a silent zero. Look an id up with /api/frontend/suggestions/skills?term=<word>, which returns value as the id, and keep it under skills.hc) or ats (the employer watchlist from the active profile - Greenhouse, Ashby and BambooHR instances read one company per request, so pages means how many companies to read, and query filters titles locally because no provider offers a search). On af, query is a free-text search that is neither a phrase nor a literal match, and multi-word queries are sent as given - but they narrow very sharply and often to zero (two words survive only where they genuinely sit together in a posting, three words usually return nothing), so start with one word and add another only if the count allows. On hc, query is full text over the whole posting rather than over its stack: a hit need not carry the term in skills at all. This tool is NOT read-only by default: every posting it returns is recorded as seen, so the same search run twice returns the second answer empty. Set onlyNew=false to see everything, dryRun=true to record nothing - dryRun is the read-only way to call it. tm, w3 and hc fill the skills field; af usually leaves it empty and ats never fills it, because no ATS provider publishes one. In the answer, found is the source own total where it states one and collected is what was fetched; found null with foundUnavailable means the total could not be fetched and the jobs still could - on af the count and search endpoints have been seen disagreeing, so a dead counter no longer hides a working board; complete=false means a page or company loop stopped short and the result is a lower bound; filtered is how many records a local query dropped on ats. skipped says why the answer is shorter than what was collected: seen is this source offering the same id again, merged lists postings already stored under another id - and a merged entry carrying atEmployer is a posting that reaches the employer directly, with stored=true meaning that link was added to the row it merged into, so it can be asked for again later. applyAtEmployer says whether a job url opens the employer own application: always true on ats, true for most of sol, false on w3, tm and hc, and null on af, where nobody checked. signals and note carry what the posting own text says about work authorisation, office presence and the required backend language, quoted verbatim - they are raised where the source publishes text - ats, and af, whose summary keeps an office requirement but not a legal notice - nothing is ever dropped for them, and which phrases and languages to look for is configured in the profile. locationVerified is false everywhere: the location and work mode are what the source states, and three of them have been measured wrong.',
     inputSchema: {
       source: sourceSchema.optional(),
       preset: presetSchema.optional(),
@@ -239,6 +259,9 @@ server.registerTool(
   'jobs_mark_status',
   {
     title: 'Mark job status',
+    // Writes, but only over one row's own status, and writing the same status
+    // twice leaves the same row - so not destructive, and idempotent.
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     description: 'Record a status for a job id: applied | rejected | interview | skip | new. Use to keep the store in sync with the vacancies tracker. AgileFluent ids are bare numbers; every other source prefixes its own - tm:266809, w3:..., sol:..., hc:..., and ats:<provider>:<company>:<id>.',
     inputSchema: {
       id: z.string(),
@@ -253,6 +276,8 @@ server.registerTool(
   'jobs_stats',
   {
     title: 'Seen/store stats',
+    // Counts what is already on disk; touches no board.
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     description: 'How many jobs are stored, the breakdown by status and by source, how many rows carry a way in to the employer own application (withApplyAtEmployer, by source - rows written before that was recorded are not counted), and the last run.',
     inputSchema: {},
   },

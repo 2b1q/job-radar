@@ -72,12 +72,11 @@ cannot do. Every zero is in the right-hand column. The board was answering all
 along; the preset was removing the answers.
 
 **It is not a literal match either.** Of the six records `backend node` returns,
-five were inspected: four carry neither word in their title or their description,
-and the titles are `Full Stack Engineer`, `Fullstack Engineer`,
-`Computer Scientist I (Full Stack Growth Engineer)`. Whatever it is — the store
-backup left beside this work is named `pre-vectors` — it retrieves by meaning
-rather than by string, which also explains why `backend node.js` (111) and
-`node.js backend` (60) differ without either being a phrase.
+five were inspected: four carry neither word in their title or their
+description, and the titles they do carry are full-stack ones. Whatever the
+board is doing, it retrieves by meaning rather than by string — which is also why
+`backend node.js` (111) and `node.js backend` (60) differ without either being a
+phrase.
 
 So the local refusal is gone. **Refusing a query the board answers is worse than
 the silent zero it was meant to prevent:** a zero is visible in the number, while
@@ -97,11 +96,10 @@ identical headers, 2026-09-09:
 | `roles: "backend"` (a string, not a list) | **500** |
 | `role: [...]` (misspelt name) | 200, unfiltered — an unknown NAME is still dropped in silence |
 
-A profile's own list was bisected the same way: four of its six values answered
-200 and two answered 500, which is what had killed every preset at once. The two
-are not reproduced here — they are somebody's search, and the board fact is the
-one above: **some role strings crash this endpoint and the board says which only
-by falling over.**
+A list of six ordinary role titles was bisected the same way: four answered 200
+and two answered 500, which is enough to kill every preset at once, because
+`roles` goes into every request. **Some role strings crash this endpoint, and the
+board says which only by falling over.**
 
 ### The valid values are recoverable, from the answers rather than the schema
 

@@ -82,7 +82,7 @@ drops a legal notice — measured, 0 work-authorisation hits over 150 AgileFluen
 records. See [agilefluent.md](agilefluent.md).
 
 Which phrases and which languages matter is configured in the profile, because
-that is one person's search. What is NOT configured is the grammar, because that
+that is the reader's own business. What is NOT configured is the grammar, because that
 is the part a title and a tag list get wrong:
 
 | raises it | does not |

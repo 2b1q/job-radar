@@ -8,13 +8,21 @@
     "a shortlist. `active` picks the default; JOBS_PROFILE overrides it per run.",
     "Every value here is an illustration - replace them, do not inherit them.",
     "",
-    "roles / grades        searched as job title words on boards that search titles.",
-    "                      On AgileFluent they are closed lists the board does not",
-    "                      publish, matched exactly, and BOTH CUT SILENTLY - it",
-    "                      leaves role unset on about half its postings and grade",
-    "                      on a third, and those are dropped without a word. Leave",
-    "                      them empty to see the whole board; notes/agilefluent.md",
-    "                      has how to recover the values it does accept.",
+    "roles / grades        LEAVE THESE EMPTY UNTIL YOU HAVE A REASON NOT TO.",
+    "                      They are searched as job title words on boards that",
+    "                      search titles, and they are the most expensive thing",
+    "                      in this file to get wrong. Measured on AgileFluent:",
+    "                      the preset alone matches 64181 postings; the same",
+    "                      preset with two role words matches 1252, and two of",
+    "                      the three example profiles below used to answer HTTP",
+    "                      500 because that board crashes on a role it does not",
+    "                      have and publishes no list of the ones it does.",
+    "                      They also CUT SILENTLY: that board leaves role unset on",
+    "                      about half its postings and grade on a third, and a",
+    "                      non-empty list drops those without a word. Empty lists",
+    "                      filter nothing, which is the right default. When you do",
+    "                      want them, notes/agilefluent.md has how to recover the",
+    "                      values that board accepts.",
     "                      `grades` also becomes career.habr.com's qualification",
     "                      filter, which knows intern, junior, middle, senior and",
     "                      lead and answers anything else with zero results",
@@ -35,7 +43,10 @@
     "                      hc will not take the slugs it displays: look an id",
     "                      up with /api/frontend/suggestions/skills?term=node,",
     "                      which answers {value, title, alias} - `value` is the",
-    "                      id. A slug there returns zero results, not an error",
+    "                      id. A slug there returns zero results, not an error.",
+    "                      tm slugs cannot be checked without the paid account:",
+    "                      its search-skills endpoint answers 401 anonymously,",
+    "                      so no example here carries a tm skills list",
     "categories            names for board taxonomy ids, so a query reads",
     "                      `category: \"data\"` instead of `38467`. The ids here",
     "                      are TalentMove's; list them with",
@@ -71,46 +82,114 @@
     "                      a posting FOR YOU - a language offered as an",
     "                      alternative (`Go and/or Node.js`) does not raise it,",
     "                      one stated as the requirement does. All three lists are",
-    "                      yours; the grammar around them is the repository's"
+    "                      yours; the grammar around them is the repository's.",
+    "                      `languages` is about BACKEND languages that rule a",
+    "                      posting out. It does not translate to every search -",
+    "                      the frontend profile below leaves it empty rather",
+    "                      than inventing a list for symmetry"
   ],
   "active": "dba",
   "profiles": {
     "dba": {
-      "roles": ["Database Administrator", "Database Engineer"],
-      "grades": ["middle", "senior"],
-      "relocationCountries": ["deu", "nld"],
-      "skills": { "default": ["postgresql", "oracle"], "w3": ["postgres"], "sol": ["database"], "hc": ["1024"] },
-      "categories": { "data": 38467 },
+      "roles": [],
+      "grades": [],
+      "relocationCountries": [
+        "deu",
+        "nld"
+      ],
+      "skills": {
+        "default": [
+          "postgresql",
+          "oracle"
+        ],
+        "w3": [
+          "postgres"
+        ],
+        "sol": [
+          "database"
+        ],
+        "hc": [
+          "1024"
+        ]
+      },
+      "categories": {
+        "data": 38467
+      },
       "tagGroups": {
-        "rdbms": ["PostgreSQL", "Oracle", "MySQL", "MS SQL"],
-        "process": ["ITIL", "ITSM", "SLA", "Incident Management"]
+        "rdbms": [
+          "PostgreSQL",
+          "Oracle",
+          "MySQL",
+          "MS SQL"
+        ],
+        "process": [
+          "ITIL",
+          "ITSM",
+          "SLA",
+          "Incident Management"
+        ]
       }
     },
     "product-owner": {
-      "roles": ["Product Owner", "Product Manager"],
-      "grades": ["senior", "lead"],
+      "roles": [],
+      "grades": [],
       "relocationCountries": [],
       "skills": [],
       "categories": {},
       "tagGroups": {
-        "discovery": ["Discovery", "User Research", "A/B Testing"],
-        "delivery": ["Roadmap", "Stakeholder Management", "Agile", "Scrum"]
+        "discovery": [
+          "Discovery",
+          "User Research",
+          "A/B Testing"
+        ],
+        "delivery": [
+          "Roadmap",
+          "Stakeholder Management",
+          "Agile",
+          "Scrum"
+        ]
       }
     },
     "android": {
-      "roles": ["Android Developer", "Mobile Engineer"],
-      "grades": ["middle", "senior"],
-      "relocationCountries": ["prt", "esp"],
-      "skills": ["kotlin"],
-      "categories": { "dev": 7 },
+      "roles": [],
+      "grades": [],
+      "relocationCountries": [
+        "prt",
+        "esp"
+      ],
+      "skills": [
+        "kotlin"
+      ],
+      "categories": {
+        "dev": 7
+      },
       "tagGroups": {
-        "android": ["Kotlin", "Jetpack Compose", "Gradle", "Android SDK"],
-        "quality": ["Unit Testing", "CI/CD", "Espresso"]
+        "android": [
+          "Kotlin",
+          "Jetpack Compose",
+          "Gradle",
+          "Android SDK"
+        ],
+        "quality": [
+          "Unit Testing",
+          "CI/CD",
+          "Espresso"
+        ]
       },
       "watchlist": [
-        { "provider": "greenhouse", "slug": "example-co", "name": "Example Co" },
-        { "provider": "ashby", "slug": "example-labs" },
-        { "provider": "bamboohr", "slug": "example-group" }
+        {
+          "provider": "greenhouse",
+          "slug": "example-co",
+          "name": "Example Co"
+        },
+        {
+          "provider": "ashby",
+          "slug": "example-labs"
+        },
+        {
+          "provider": "bamboohr",
+          "slug": "example-group"
+        }
       ],
       "signals": {
         "phrases": {
@@ -120,7 +199,63 @@
           ]
         },
         "onsite": true,
-        "languages": ["Go", "Scala"]
+        "languages": [
+          "Go",
+          "Scala"
+        ]
+      }
+    },
+    "frontend-wallets": {
+      "_comment": "Why this set of sources has two crypto boards: they are addressed by tag page and free text, not by an industry search. Every value below was sent to its board before it was written down.",
+      "roles": [],
+      "grades": [],
+      "relocationCountries": [
+        "prt",
+        "esp"
+      ],
+      "skills": {
+        "w3": [
+          "react",
+          "evm"
+        ],
+        "hc": [
+          "1070",
+          "245"
+        ],
+        "sol": [
+          "react"
+        ]
+      },
+      "categories": {
+        "frontend": 38448
+      },
+      "tagGroups": {
+        "wallets": [
+          "MetaMask",
+          "WalletConnect",
+          "wagmi",
+          "viem",
+          "ethers.js"
+        ],
+        "frontend": [
+          "React",
+          "TypeScript",
+          "Next.js"
+        ]
+      },
+      "watchlist": [
+        {
+          "provider": "greenhouse",
+          "slug": "example-chain"
+        },
+        {
+          "provider": "ashby",
+          "slug": "example-wallet"
+        }
+      ],
+      "signals": {
+        "onsite": true,
+        "languages": []
       }
     }
   }

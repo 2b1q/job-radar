@@ -3,10 +3,14 @@
 The server speaks MCP over stdio, so a client starts it as a subprocess. Back to
 the [README](README.md).
 
+**As a Claude Code plugin this is all done for you** — `.mcp.json` in this
+repository registers the server, and the steps below are for a client you are
+configuring by hand.
+
 ## 1. Install
 
-    pnpm install
-    node --test          # offline, should end with "fail 0"
+    pnpm install         # npm install works too
+    pnpm test            # offline, should end with "fail 0"
 
 ## 2. Give the client an absolute path to node
 
@@ -45,14 +49,19 @@ under `mcpServers`:
 `node:sqlite` is no longer behind the flag. Leaving it in means the config
 survives a node upgrade or downgrade either way.
 
-Restart the client. The tools appear as `jobs_search`, `jobs_count`, `jobs_mark`
-and `jobs_stats`.
+Restart the client. The tools appear as `jobs_search`, `jobs_count`,
+`jobs_mark_status` and `jobs_stats`.
 
 ## 4. Before the first search
 
 Copy `profiles.example.json` to `profiles.json` and describe what you are looking
-for. Without it the server falls back to the example profile, which is a
-demonstration rather than anybody's search.
+for. **There is no fallback**: without that file the server prints one line
+naming the template and exits, rather than running somebody else's search under
+your name.
+
+Copy it and change nothing, and every board works — the example filters by
+nothing on purpose. `roles` and `grades` are the two keys to leave alone until
+you have a reason; the file says why beside them.
 
 A board that needs a session cookie reads it from the environment — `TM_COOKIE`
 in the `env` block above, or exported before the client starts. It is a live
@@ -64,6 +73,8 @@ this directory.
 - The store is created on first run as `jobs.db` beside the server;
   `JOBS_DB_PATH` moves it. Keep it on a local disk — SQLite over a network share
   is a way to lose it.
-- `node smoke.mjs <af|tm|w3>` exercises one board without MCP and without
-  touching the store; it is the quickest way to tell a broken config from a
-  broken board.
+- `node smoke.mjs <af|tm|w3|sol|hc|ats>` exercises one source without MCP and
+  without touching the store; it is the quickest way to tell a broken config
+  from a broken board. `tm` needs `TM_COOKIE` and `ats` needs a profile with a
+  `watchlist`, so both say what is missing instead of answering emptily — and
+  the example watchlist is placeholders, which answer 404 by design.
