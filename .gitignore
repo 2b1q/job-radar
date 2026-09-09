@@ -2,17 +2,30 @@
 # reproducible, and it is the half of the pair that is not derived.
 node_modules/
 
+# THE RULE THESE PATTERNS KEEP LEARNING: a pattern anchored to the end of a name
+# does not cover a copy of that file. `profiles.json` matched exactly one name
+# and not `profiles.json.bak-08sep`, which sat untracked AND unignored, one
+# `git add .` away from a public repository. Whenever something here is private,
+# ignore the name AND anything suffixed onto it.
+
 # The search profile: roles, grades, the countries you would move to, the tag
 # vocabularies you care about. Yours, not the repository's. Only the example
 # version is published.
-profiles.json
 profiles.json*
 
 # The store. It holds which vacancies were applied to, rejected and skipped -
-# a record of a job search, not source.
+# a record of a job search, not source. `*.db` covers a name ending in .db;
+# `jobs.db*` is what covers a dated copy of it.
 *.db
 *.db-journal
 *.db-wal
+jobs.db*
+*.sqlite*
+
+# A dump of the store is the store, in text. No .sql or .dump belongs in this
+# repository for any other reason - the schema lives in store.mjs.
+*.sql
+*.dump
 
 # Session cookies and keys. TM_COOKIE is a live account session; same boundary
 # as any other credential - it is passed in the environment, never stored here.
@@ -30,8 +43,14 @@ profiles.json*
 *.key
 
 # Editor and backup leftovers: a copy of an ignored file is not itself ignored.
+# The suffixed forms are here because the habit is to date a backup -
+# `.bak-08sep` rather than `.bak` - and a date defeats an anchored pattern.
 *.bak
+*.bak-*
+*.backup*
 *.orig
+*.old
+*.copy
 *.save
 *.swp
 *~
