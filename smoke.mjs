@@ -26,66 +26,78 @@ import { CATEGORIES, PROFILE, afFilters, hcParams, signalConfig, skillsFor, solP
 const which = process.argv[2] || 'af';
 const arg = process.argv[3];
 
+
+
 const show = async (label, count, jobs) => {
   console.log(`${label}: profile "${PROFILE.name}" from ${PROFILE.source}`);
   console.log('count:', count);
   console.log(`${jobs.length} jobs, first:`, jobs[0]);
 };
 
-if (which === 'af') {
-  const filters = afFilters({ preset: 'remote', since: 'week' });
-  await show('af', await agilefluent.count(filters), await agilefluent.search(filters, 1));
-} else if (which === 'tm') {
-  if (!process.env.TM_COOKIE) {
-    console.warn('TM_COOKIE is empty: this board sometimes answers 401 without a session');
-  }
-  // The endpoint answers HTTP 400 without a category or a search query, so a
-  // preset alone is not a request this board accepts - `node smoke.mjs tm` used
-  // to fail on that with or without a session.
-  const category = arg || Object.keys(CATEGORIES)[0];
-  if (!category) {
-    console.error('tm needs a category: node smoke.mjs tm <id|name>, or give the '
-      + 'profile a categories map - the endpoint answers 400 without one');
+async function run() {
+  if (which === 'af') {
+    const filters = afFilters({ preset: 'remote', since: 'week' });
+    await show('af', await agilefluent.count(filters), await agilefluent.search(filters, 1));
+  } else if (which === 'tm') {
+    if (!process.env.TM_COOKIE) {
+      console.warn('TM_COOKIE is empty: this board sometimes answers 401 without a session');
+    }
+    // The endpoint answers HTTP 400 without a category or a search query, so a
+    // preset alone is not a request this board accepts - `node smoke.mjs tm` used
+    // to fail on that with or without a session.
+    const category = arg || Object.keys(CATEGORIES)[0];
+    if (!category) {
+      console.error('tm needs a category: node smoke.mjs tm <id|name>, or give the '
+        + 'profile a categories map - the endpoint answers 400 without one');
+      process.exit(2);
+    }
+    const params = tmParams({ preset: 'remote', category });
+    await show(`tm (category ${category})`, (await talentmove.count(params)).found,
+               await talentmove.search(params, 1));
+  } else if (which === 'w3') {
+    // This board is addressed by tag page, not by preset: the slug is its taxonomy,
+    // and its own - `PROFILE.skills[0]` used to be whatever the profile listed for
+    // any board, which is how this script asked web3.career for /node-js-jobs.
+    const tag = arg || skillsFor('w3')[0];
+    if (!tag) {
+      console.error('w3 needs a tag: node smoke.mjs w3 <slug>, or give the profile '
+        + 'a skills list for w3 - the slugs are this board\'s own');
+      process.exit(2);
+    }
+    await show(`w3 (${tag})`, await web3career.count({ tag }), await web3career.search({ tag }, 1));
+  } else if (which === 'sol') {
+    // One free-text term, because the board's search narrows with every word.
+    const term = arg || skillsFor('sol')[0] || '';
+    const params = solParams({ preset: 'remote', query: term });
+    await show(`sol (${term || 'no term'})`, await solana.count(params), await solana.search(params, 1));
+  } else if (which === 'hc') {
+    // Free text plus whatever the profile's grades map to; the board's skill ids
+    // are its own, so they come from skills.hc rather than from any shared list.
+    const params = hcParams({ preset: 'remote', query: arg || '', skills: skillsFor('hc') });
+    await show(`hc (${arg || 'no term'})`, (await habrcareer.count(params)).found,
+               await habrcareer.search(params, 1));
+  } else if (which === 'ats') {
+    // No taxonomy and no argument: the watchlist IS the query, and an empty one is
+    // configuration missing rather than a company with nothing open.
+    const employers = watchlist();
+    if (!employers.length) {
+      console.error('ats needs a watchlist: give the profile a `watchlist` of '
+        + '{ provider, slug } entries - see profiles.example.json');
+      process.exit(2);
+    }
+    const one = employers.slice(0, 1);
+    await show(`ats (${one[0].provider}/${one[0].slug})`, (await ats.count({ watchlist: one })).found,
+               await ats.search({ watchlist: one, signalConfig: signalConfig() }, 1));
+  } else {
+    console.error(`unknown source "${which}" - one of: af, tm, w3, sol, hc, ats`);
     process.exit(2);
   }
-  const params = tmParams({ preset: 'remote', category });
-  await show(`tm (category ${category})`, (await talentmove.count(params)).found,
-             await talentmove.search(params, 1));
-} else if (which === 'w3') {
-  // This board is addressed by tag page, not by preset: the slug is its taxonomy,
-  // and its own - `PROFILE.skills[0]` used to be whatever the profile listed for
-  // any board, which is how this script asked web3.career for /node-js-jobs.
-  const tag = arg || skillsFor('w3')[0];
-  if (!tag) {
-    console.error('w3 needs a tag: node smoke.mjs w3 <slug>, or give the profile '
-      + 'a skills list for w3 - the slugs are this board\'s own');
-    process.exit(2);
-  }
-  await show(`w3 (${tag})`, await web3career.count({ tag }), await web3career.search({ tag }, 1));
-} else if (which === 'sol') {
-  // One free-text term, because the board's search narrows with every word.
-  const term = arg || skillsFor('sol')[0] || '';
-  const params = solParams({ preset: 'remote', query: term });
-  await show(`sol (${term || 'no term'})`, await solana.count(params), await solana.search(params, 1));
-} else if (which === 'hc') {
-  // Free text plus whatever the profile's grades map to; the board's skill ids
-  // are its own, so they come from skills.hc rather than from any shared list.
-  const params = hcParams({ preset: 'remote', query: arg || '', skills: skillsFor('hc') });
-  await show(`hc (${arg || 'no term'})`, (await habrcareer.count(params)).found,
-             await habrcareer.search(params, 1));
-} else if (which === 'ats') {
-  // No taxonomy and no argument: the watchlist IS the query, and an empty one is
-  // configuration missing rather than a company with nothing open.
-  const employers = watchlist();
-  if (!employers.length) {
-    console.error('ats needs a watchlist: give the profile a `watchlist` of '
-      + '{ provider, slug } entries - see profiles.example.json');
-    process.exit(2);
-  }
-  const one = employers.slice(0, 1);
-  await show(`ats (${one[0].provider}/${one[0].slug})`, (await ats.count({ watchlist: one })).found,
-             await ats.search({ watchlist: one, signalConfig: signalConfig() }, 1));
-} else {
-  console.error(`unknown source "${which}" - one of: af, tm, w3, sol, hc, ats`);
-  process.exit(2);
 }
+
+// A board refusing is the ordinary outcome here - a wrong slug, a missing
+// cookie, a placeholder watchlist entry - and the adapter's sentence IS the
+// answer. A stack trace buries it.
+run().catch((err) => {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+});

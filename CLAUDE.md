@@ -16,7 +16,7 @@ is `notes/`.
 |---|---|
 | Install | `pnpm install` |
 | Run MCP | `node --experimental-sqlite server.mjs` |
-| Tests | `pnpm test` (`node --test`; the flags are in `package.json`, `--test-timeout` among them - see [Testing](#testing)) |
+| Tests | `pnpm test` (`node --test`; the flags are in `package.json`, `--test-timeout` among them - see `.claude/rules/testing.md`) |
 | Smoke, one source | `node smoke.mjs af` · `TM_COOKIE=... node smoke.mjs tm [category]` · `node smoke.mjs w3 [tag]` · `node smoke.mjs sol [term]` · `node smoke.mjs hc [term]` · `node smoke.mjs ats` (each falls back to what the profile names for THAT source) |
 | Store state | `node --experimental-sqlite -e "import('./store.mjs').then(s=>console.log(s.stats()))"` |
 
@@ -32,33 +32,25 @@ adapters/_shared/ everything every adapter needs and none of them owns, signals 
 store.mjs         SQLite: seen ids, dup_key, derived employer, statuses, run log, request budget
 ```
 
-**An adapter translates one board into the shared shape. That is its whole job.** Throttling,
-user agents, headers, request counting, guards, text normalisation and shape validation are
-not board-specific and do not belong in it.
+## Where the rest of the rules are
 
-The shape every adapter returns:
+Four sets of rules live in `.claude/rules/` and load **only when a matching file is
+opened**, which is why this file is short enough to be followed:
 
-```js
-{ id, source, company, title, url, applyAtEmployer, country, locationVerified,
-  format, salaryLabel, salaryMinUsd, skills: [], hasRussianRoots, visa, date }
-```
+| file | loads when you touch | holds |
+|---|---|---|
+| `testing.md` | `tests/**` | fixtures, guards, the runner's flags |
+| `adapters.md` | `adapters/**`, `params.mjs`, `server.mjs` | the shared record shape, id prefixes, what every board has already taught us |
+| `documentation.md` | any `*.md`, `profiles.example.json` | which of the three documents a sentence belongs in |
+| `releasing.md` | `.claude-plugin/**`, `.mcp.json`, `package.json` | the three version strings and `claude plugin validate` |
 
-`id` carries a source prefix for every source except AgileFluent (`tm:`, `w3:`, `sol:`,
-`hc:`, and `ats:<provider>:<company>:`).
-AgileFluent ids stay bare: the store already holds them as plain numbers with statuses
-attached, and prefixing would orphan every mark. A bare number can never equal `tm:...`, so
-they cannot collide.
+Splitting is not free context: a rule with no `paths:` and an `@import` both load at
+launch, exactly like this file. Only `paths:` makes a rule lazy, so a rule that belongs to
+everything belongs **here** rather than in a file of its own.
 
-`applyAtEmployer` is `true` when the url opens the employer's own application, `false` when
-it reaches the board and stops there, and `null` where nobody has classified that board's
-links. A link is never substituted for another. `locationVerified` is `false` everywhere:
-place and work mode are copied from the board and nothing is derived from them.
-
-**What to search for is configuration, not code.** Roles, grades, relocation countries, tag
-vocabularies and board taxonomy ids live in `profiles.json` (gitignored;
-`profiles.example.json` ships). Nothing personal to one search belongs in the adapters, in
-`params.mjs` or in `README.md` — the repo is a general tool, and a hard-coded stack is how
-it stops being one.
+**One release rule cannot be lazy**, because it applies while you are changing something
+else: *a user gets an update only when the version string changes, so a change that reaches
+a user bumps the version in the same commit.* The procedure is in `releasing.md`.
 
 ## Invariants — do not break
 
@@ -84,7 +76,7 @@ Each step is what makes the next one honest.
    probably works like the other board" is not a finding
 3. **Build the smallest thing that does the job**, touching only what the task needs and
    preferring an existing pattern to a new one. Rules for the code itself:
-   [Writing code here](#writing-code-here), [Testing](#testing)
+   [Writing code here](#writing-code-here), `.claude/rules/testing.md`
 4. **Verify by running.** "Probably the dry-run flag" is not an answer; a run that produces
    the missing rows is. For a fix, show the number it changed
 5. **Review your own diff** — below
@@ -109,7 +101,7 @@ every one was written by the author of the change:
   or it goes; "somebody might" is how a module grows a public surface nobody maintains
 - **a number in two files** — the same measurement in a comment and in `notes/`, already
   disagreeing because the second measurement was bigger than the first. One number, one
-  home: [Documentation](#documentation-three-files-three-jobs)
+  home: `.claude/rules/documentation.md`
 - **documentation the change invalidated** — a debt table listing work that is done, a
   README paragraph describing the old shape, a command line that grew an argument
 - **scope creep, and its opposite** — a refactor nobody asked for, or a fix that stopped at
@@ -162,7 +154,7 @@ reviews it and commits it themselves; a commit made for them removes that review
 
 Order, and none of it is optional:
 
-1. tests pass — `pnpm test`, reported as [Testing](#testing) requires
+1. tests pass — `pnpm test`, reported as `.claude/rules/testing.md` requires
 2. `git status --porcelain -uall`, read line by line. `-uall` because a directory collapses
    to one line and hides what is inside it
 3. the scan above, reported category by category
@@ -192,95 +184,14 @@ Do not commit, amend, push, or create a branch unless asked in that message.
   beats a paragraph explaining a clever line — reach for a comment only after the code
   cannot be made to say it. One or two lines, three at the ceiling, and only the
   non-obvious *why*. A comment growing past that is the signal to fix the code or move
-  the prose to `notes/` (see [Documentation](#documentation-three-files-three-jobs))
+  the prose to `notes/` (see `.claude/rules/documentation.md`)
 
-## Testing
+## Standing debt — recorded, not to be refactored
 
-- Offline: fixtures only, no network in tests
-- Fixtures are synthetic or sanitised, and declare which they are
-- **Every guard is verified by breaking the code it guards, not the fixture.** A test that
-  has never failed proves nothing
-- A skipped test must be visible: print how many were skipped and why. `OK (skipped=12)` is
-  not `OK`
-- Cover the seam, not each side of it: feed one module's output straight into its consumer
-- **A spawned server is closed in a `finally`, always.** An unclosed client leaves the
-  process running and `node --test` will not exit: a suite that passes and then hangs.
-  `--test-timeout` bounds it; `--test-force-exit` was tried and rejected because it skips
-  tests silently — numbers in `notes/testing.md`
+The `get`/`post` wrapper and the page loop are copied once per adapter, six times each.
+`_shared/` holds everything else: throttling, user agents, the request counter,
+`strip`/`decode`, `normKey`, both guards and the signal detector.
 
-## What the boards have already taught us
-
-Each cost a debugging session. The measurements behind them are in `notes/`.
-
-- **Boards fail silently in different ways, and tolerance is per parameter.** An unknown
-  parameter *name* is accepted and dropped, and the answer is the unfiltered total. An
-  unknown *value* is refused loudly on one parameter and answered with a silent zero on the
-  next one of the same board. An unknown value *inside a comma list* is dropped without a
-  word on one board and refused on another. Never infer one parameter's tolerance from its
-  neighbour, or one board's from another: validate locally what a board accepts quietly
-- **Take API parameter names from `data-param`, never from `name`.** Both sit on the same
-  element; the API reads the first
-- **A match is not an assertion.** A word found in a posting's text says nothing until
-  something governs it and its polarity is read: `hybrid` described a portfolio, and
-  `visa sponsorship` was found inside "no visa sponsorship". Both were live, both flagged
-  the opposite of the truth. The vocabulary is the user's; the grammar is ours —
-  `notes/signals.md`
-- **A filter on a field the board leaves empty is a silent cut.** One board sets `role` on
-  about half its postings and `grade` on two thirds, so filtering on either discards the
-  rest before anything else runs, and the answer looks like a market. Measure the coverage
-  of a field before filtering on it, and say so where a caller will read it
-- **A category is not a partition.** A negative result inside one category says nothing
-  about the board — a posting whose subject is plainly crypto has been found in `dev` and
-  not in `crypto`. When reporting an absence, name the scope
-- **Guard every silent success.** Zero parsed while the envelope reports results: throw. A
-  page that starts where the previous one started: throw. Both happened, and the second was
-  hidden by dedup
-- **A number without its conditions is not usable.** `verified` vs `estimated` salary stays
-  in the label because a site estimate is not an offer, and a figure whose currency or
-  period the board did not state never enters a field named after one
-- **Generalising from one sample has failed three times here.** One category, one match, one
-  board state. Measure a second case before writing a rule
-
-## Standing debt
-
-`_shared/` holds the throttling, the user agents, the request counter, `strip`/`decode`,
-the single `normKey`, both guards and the signal detector. Two things are still per source,
-and the fifth and sixth adapters made each a **sixth** copy:
-
-| duplicated six times | belongs in |
-|---|---|
-| the `get` / `post` wrapper: count the request, call fetch, classify the status, throw with the source's context | `_shared/http.mjs` |
-| the page loop: fetch, parse, guard, accumulate, throttle | `_shared/paginate.mjs` |
-
-Neither is a mechanical copy — statuses differ per source, and each loop stops on a different
-signal (`hasMore`, `max_pages`, an empty page, a `count`, `meta.totalPages`, the end of a
-watchlist) — which is why they survived. The two newest widen the spread rather than repeat
-it: one board answers **404 past its last page** where the others answer an empty list, and
-the watchlist reads one company per request and does not page at all. An argument for
-extracting them carefully, not for leaving them — and the count is now past the number the
-line below calls a defect.
-
-**A third adapter needing something means it was never adapter-specific. Two copies are a
-smell, three are a defect.**
-
-## Documentation: three files, three jobs
-
-- **`README.md`** — for someone deciding whether to use this: the problem it solves, what
-  it does about it, which boards it speaks to, how to start it, and what it deliberately
-  does not do. High level throughout — no field contracts, no mechanics, no measurements.
-  Those have their own files, and the README links to them. Roughly a hundred lines is the
-  budget, and it is a budget, not a target
-- **`notes/*.md`** — every measurement, probe, dead end and board quirk, with the number and
-  the conditions that produced it. This is where a fact goes when it is true but nobody
-  needs it to use the tool
-- **`CLAUDE.md`** — how to work in this repository. Not what the tool does
-
-Rules that keep them from merging back together:
-
-- A number belongs in `notes`. A README that quotes a measurement will be wrong within a
-  month and nobody will notice
-- If a paragraph answers none of "why would I use this", "how do I start it" and "what
-  will it not do", it is not a README paragraph
-- Say a thing in one file. A sentence repeated in two drifts into two different claims
-- No project history and no rationale essays anywhere. The README may say what the tool is
-  for; it may not claim anything that has not been measured
+**This is a decision, not an oversight.** Neither copy is mechanical — statuses differ per
+source and every loop stops on a different signal — and rewriting six adapters costs more
+than holding it. Do not extract them, and do not re-open it without being asked.
