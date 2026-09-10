@@ -243,3 +243,27 @@ Every posting's "Перейти к вакансии" button is `href="#"` with
 all, on any posting checked. The board is a discovery layer, not a route to the
 employer: the ATS domain - normally the cheapest way to name an unnamed company -
 is behind registration.
+
+## The board needs a category, and `query` never reached it
+
+`jobs_count { source: tm, query: "node" }` came back **HTTP 400** with the
+board's own sentence about needing "a category or a search query" — while the
+caller had passed a query. `tmParams` never took `query`, so it was dropped
+between the schema and the request, and the board's complaint read as nonsense.
+
+Refused here now, before the request: a `tm` call with no category names the
+categories the profile actually offers, and a `query` is refused outright rather
+than silently dropped. The refusal lives at the tool boundary, not in
+`tmParams`, which is a pure mapping and is documented as one.
+
+## The envelope escapes twice
+
+A title containing an ampersand arrives here as `Backend &amp; Blockchain` —
+the entity, in the text — while another board holds the same posting as
+`Backend & Blockchain`. `decode()` ran one pass, so `&amp;amp;` became `&amp;`
+and stopped there, and the two titles built dedup keys that could never meet.
+`decode()` now runs to a fixed point.
+
+Two stored titles carry an entity. Separately, **41 tm titles carry a ` для …`
+tail** the other boards do not use — enough that stripping it before the dedup
+key is worth measuring, and not enough to do blind. Not done.

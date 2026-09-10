@@ -1,6 +1,7 @@
 // adapters/agilefluent.mjs - AgileFluent job board HTTP client (SRP: network only, no state).
 // No external deps: uses built-in fetch (Node 18+).
 
+import { leadsToEmployer } from './_shared/apply-link.mjs';
 import { createHttp, LANGS, pick, USER_AGENTS } from './_shared/http.mjs';
 import { pageRepeatGuard } from './_shared/guards.mjs';
 import { detectSignals, signalNote } from './_shared/signals.mjs';
@@ -111,6 +112,7 @@ export function usdMin(salaryLabel, salaryMinUsd) {
 
 // Normalize a raw API job into the compact shape we expose and store.
 function normalize(job, signalConfig = {}) {
+  const url = decodeJobUrl(job.url);
   // The board summarises every posting, so signals have text to read here. It is
   // the board's precis, not the employer's words - notes/agilefluent.md.
   const found = detectSignals(job.description || '', signalConfig);
@@ -122,12 +124,12 @@ function normalize(job, signalConfig = {}) {
     source: 'af',
     company: job.companyName,
     title: job.title,
-    url: decodeJobUrl(job.url),
-    // Unknown, deliberately. The link this board carries is sometimes an
-    // employer's own ATS and sometimes another aggregator - LinkedIn, or the
-    // other board in this repo - and a host list that decides which is which
-    // would be a guess dressed as a fact. Null is "nobody checked".
-    applyAtEmployer: null,
+    url,
+    // Read from the host, which is the only thing this board tells us about its
+    // links. Still `null` wherever the host settles nothing - see
+    // `_shared/apply-link.mjs` for why that third answer is kept.
+    applyAtEmployer: leadsToEmployer(url),
+    applyFrom: 'host',
     country: job.country,
     locationVerified: false,
     format: job.format,

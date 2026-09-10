@@ -116,3 +116,16 @@ which is the failure this file is otherwise about.
 Whether polarity should distinguish "not stated" from "denied". It does not: a
 posting that never mentions sponsorship raises nothing at all, which reads the
 same as a posting that has not been looked at.
+
+## An office in a benefits list
+
+A third live false positive, of one shape seen twice: `In-office meals`, and
+earlier `In-Office Group Meals`. A benefits list names the office more often
+than a requirement does, and `hybrid`/`on-site` sitting next to *meals, snacks,
+lunch, perks, benefits, stipend, gym, parking, catering* is a thing offered, not
+a place you must be.
+
+Handled as a second qualifier beside the "office as an option" one, and for the
+same reason: the vocabulary of what is being offered is grammar, not somebody's
+preference. A requirement in the next sentence still lands — the qualifier
+disqualifies the sentence it is in, not the posting.

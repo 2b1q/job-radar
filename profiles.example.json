@@ -59,6 +59,14 @@
     "                      or a check on what came back. Each group is an OR,",
     "                      because one idea is usually spread over several",
     "                      interchangeable tags",
+    "titleExclude          regular expressions matched against every title, on",
+    "titleInclude          every source, after collection. A board that cannot",
+    "                      filter by role without discarding most of itself",
+    "                      returns everything, and most of everything is",
+    "                      somebody else's job. Nothing is cut silently:",
+    "                      titleFiltered counts it and showFiltered=true hands",
+    "                      the titles back. A list a person reads and edits in a",
+    "                      minute, which is why it is here and not in the code",
     "watchlist             the employers the `ats` source follows: one entry per",
     "                      company instance, `provider` one of greenhouse, ashby,",
     "                      bamboohr, and `slug` that company's own instance name -",
@@ -256,7 +264,13 @@
       "signals": {
         "onsite": true,
         "languages": []
-      }
+      },
+      "titleExclude": [
+        "\\b(sales|account executive|business development|marketing|recruit)",
+        "\\b(compliance|legal|finance|accountant)\\b",
+        "\\b(support|customer success)\\b",
+        "\\bhead of\\b"
+      ]
     }
   }
 }

@@ -216,3 +216,77 @@ which is what they always had.
 
 `jobs_stats` reports `withApplyAtEmployer` per source, counting only rows that
 actually carry one — so the gap is visible rather than implied.
+
+## Collapsing what predates the key
+
+Rows written before `dup_key` existed were deduplicated by id alone, so one
+posting could sit in the store several times. Measured before the migration:
+**32 groups over 105 rows, none first seen after the key started working** — so
+this is a legacy scar, not a live defect.
+
+The rows are not the damage. A status set by hand sat on one copy while its
+twins still read `new`, so a shortlist showed a vacancy that had already been
+applied to.
+
+The migration keeps the **earliest** row of each group — its id is the one that
+already means something — and moves onto it the strongest status found anywhere
+in the group (`applied > interview > rejected > skip > new`), any note, and any
+way in to the employer. The rest are deleted.
+
+Destructive, so it copies the store to `jobs.db.pre-collapse.bak` first and says
+what it did. Idempotent: once collapsed there is nothing left to find. On the
+store it was measured against, 1156 rows became 1083, 32 groups became 0, and
+the 39 groups that carried a mark still carried one afterwards.
+
+## The template tail, and why it is a second key rather than a shorter one
+
+One board writes a tail into its titles that no other board uses — `<role> для
+<something>`. The obvious fix is to cut it before building the key. Measured
+over 1054 rows with a company, before writing any of it:
+
+| | |
+|---|---|
+| rows carrying the tail | 37 |
+| of those, already matching another board as stored | 0 |
+| matching another board **after** the tail is cut | **0** |
+| left with two words or fewer, so the rule skips them | 17 |
+| groups the cut would newly merge | **1 — and both rows are from the same board** |
+
+The one it would have merged was a plain `Senior Back-End Developer` and a
+`Senior Backend Developer для <a product>` at one company: plausibly one posting,
+plausibly two, and nothing in the data settles it.
+
+So cutting the key bought nothing measurable and cost one merge of two postings
+from one board that differ only by the tail. This store's own rule prices that:
+*a false merge hides a live vacancy in silence, while a duplicate costs one row
+somebody sees and dismisses.*
+
+The looser form is therefore a **second** key, `loose_key`, and it may only join
+rows from **different sources**. That is the whole reason it exists: the tail is
+one board's habit, and the merge it should enable is with a board that does not
+have the habit. Two rows from one board keep their exact keys and stay apart.
+The two-word floor stays too — cutting to `Backend Developer` would take every
+posting at that company with it.
+
+19 rows in the store have a loose key that differs from their exact one. It is
+kept for the postings that have not arrived yet.
+
+## A filter that counted and then undid itself
+
+`titleFiltered`, `collapsed` and `dateFiltered` were computed on a filtered copy
+of the answer, and the copy then carried its caveats back with
+`Object.assign(kept, original)`. `Object.assign` copies an array's **indices**
+along with its named properties, so each filter wrote the unfiltered list back
+over its own result.
+
+The numbers were right and the postings beside them were not: a live call
+reported `titleFiltered: 37` next to all 47 records, and the excluded ones were
+stored as fresh on the run that was not a dry run.
+
+Only the named properties travel now. The arithmetic of an answer is checked in
+a test rather than trusted:
+
+    collected − titleFiltered − collapsed − skipped.seen − skipped.merged.length = returned
+
+`collected` is what the source returned, before any local filter, which is what
+makes that line hold.

@@ -1,4 +1,5 @@
 {
+  "_comment": "SYNTHETIC fixture. Not a captured response: the shape is BambooHR's own, the company and ids are invented. It carries no posting body, because that provider's list does not either - which is why no signal is raised from it.",
   "meta": {
     "totalCount": 4
   },

@@ -6,7 +6,7 @@
 // what is pure gets its own file, and that is usually where the interesting
 // mistakes live anyway.
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -52,11 +52,75 @@ function loadProfile() {
   return { name: key, source: file, ...profile };
 }
 
-export const PROFILE = loadProfile();
+/** Where the profile is read from, so a reload can stat it. */
+const profilePath = () => join(HERE, process.env.JOBS_PROFILES || 'profiles.json');
 
-const ROLES = PROFILE.roles || [];
-const GRADES = PROFILE.grades || [];
-const RELOCATION_COUNTRIES = PROFILE.relocationCountries || [];
+// Everything below is derived from the profile, so a reload has to rebuild all
+// of it at once. `let` rather than `const` because these are exported and read
+// live: a client keeps one server process for days, and the profile is edited
+// far more often than the server is restarted.
+export let PROFILE;
+export let CATEGORIES;
+export let TAG_GROUPS;
+let ROLES, GRADES, RELOCATION_COUNTRIES, SKILLS, AF_PRESETS;
+
+const loadState = { mtimeMs: null, key: null, at: null, error: null };
+
+function adopt(profile, mtimeMs) {
+  PROFILE = profile;
+  ROLES = profile.roles || [];
+  GRADES = profile.grades || [];
+  RELOCATION_COUNTRIES = profile.relocationCountries || [];
+  SKILLS = skillsBySource(profile.skills, profile.source);
+  CATEGORIES = profile.categories || {};
+  TAG_GROUPS = profile.tagGroups || {};
+  AF_PRESETS = {
+    remote: { countries_workplaces: [{ workplaces: ['remote'] }] },
+    ruroots: { countries_workplaces: [{ workplaces: ['remote'] }], isRussianRootsOnly: true },
+    countries: { countries_workplaces: [{ countries: RELOCATION_COUNTRIES }] },
+    anywhere: { isRemoteAnywhereOnly: true },
+  };
+  loadState.mtimeMs = mtimeMs;
+  loadState.key = process.env.JOBS_PROFILE || '';
+  loadState.at = new Date().toISOString();
+}
+
+/**
+ * Re-read the profile when the file or the chosen profile has changed.
+ *
+ * A broken edit keeps the profile that was working and carries the message out
+ * with the answer: the alternative is a server that dies on a stray comma, in a
+ * client that will not restart it.
+ */
+function refresh() {
+  let mtimeMs;
+  try {
+    mtimeMs = statSync(profilePath()).mtimeMs;
+  } catch {
+    return;   // gone or unreadable: keep what is already loaded
+  }
+  if (mtimeMs === loadState.mtimeMs && (process.env.JOBS_PROFILE || '') === loadState.key) return;
+  try {
+    adopt(loadProfile(), mtimeMs);
+    loadState.error = null;
+  } catch (err) {
+    loadState.mtimeMs = mtimeMs;   // do not retry the same broken file every call
+    loadState.error = err.message;
+  }
+}
+
+/** What is loaded, from where, and what the last reload made of it. */
+export function profileStatus() {
+  refresh();
+  return {
+    path: profilePath(),
+    profile: PROFILE?.name ?? null,
+    mtime: loadState.mtimeMs ? new Date(loadState.mtimeMs).toISOString() : null,
+    loadedAt: loadState.at,
+    ...(loadState.error ? { error: loadState.error } : {}),
+  };
+}
+
 
 /**
  * The boards this server speaks to. Kept here rather than in `server.mjs`
@@ -125,10 +189,9 @@ function skillsBySource(skills, file) {
   return out;
 }
 
-const SKILLS = skillsBySource(PROFILE.skills, PROFILE.source);
-
 /** The slugs this profile uses on one board, falling back to the shared list. */
 export function skillsFor(source) {
+  refresh();
   return SKILLS[source] ?? SKILLS.default ?? [];
 }
 
@@ -158,19 +221,6 @@ function assertBoardSkills(source, slugs) {
   }
 }
 
-/** Named shortcuts for board taxonomy ids, so a query reads `crypto`, not `903`. */
-export const CATEGORIES = PROFILE.categories || {};
-
-/** Tag sets for the client-side intersection filter. Each group is an OR. */
-export const TAG_GROUPS = PROFILE.tagGroups || {};
-
-const AF_PRESETS = {
-  remote: { countries_workplaces: [{ workplaces: ['remote'] }] },
-  ruroots: { countries_workplaces: [{ workplaces: ['remote'] }], isRussianRootsOnly: true },
-  countries: { countries_workplaces: [{ countries: RELOCATION_COUNTRIES }] },
-  anywhere: { isRemoteAnywhereOnly: true },
-};
-
 // TalentMove has its own vocabulary - taxonomy ids and slugs, not presets -
 // and mapping it here keeps the tool surface identical across boards. The
 // vocabulary itself, and what the board does with a wrong value, is measured in
@@ -192,6 +242,7 @@ const TM_PRESETS = {
 // clean filters that was wrong - the zeros were the preset's intersection - so
 // the refusal is gone. notes/agilefluent.md.
 function afFilters({ preset = 'remote', since = 'week', query, minSalary }) {
+  refresh();
   const filters = { roles: ROLES, grades: GRADES, since, ...AF_PRESETS[preset] };
   // `" "` is not a query; the board's schema caps the field at 255.
   const term = query === undefined || query === null ? '' : String(query).trim();
@@ -213,6 +264,7 @@ function afFilters({ preset = 'remote', since = 'week', query, minSalary }) {
 const TM_DATES = new Set(['today', '7days', '30days']);
 
 function tmParams({ preset = 'remote', category, skills, date }) {
+  refresh();
   const params = { ...TM_PRESETS[preset] };
   // Shape-checked, not whitelisted. Measured tolerances differ per value:
   //   999999  -> found 0, an honest "no such category"
@@ -258,6 +310,7 @@ function tmParams({ preset = 'remote', category, skills, date }) {
  * from another board's vocabulary is a redirect to /404 rather than an error.
  */
 export function w3Tag(skills) {
+  refresh();
   const tag = (Array.isArray(skills) ? skills[0] : String(skills ?? '').split(',')[0] || null);
   const slug = tag ? String(tag).trim() : null;
   if (!slug) return null;   // no tag is the whole board, which is a real query
@@ -286,6 +339,7 @@ const SOL_PRESETS = {
  * first word of a list is a different question from the one that was asked.
  */
 export function solParams({ preset = 'remote', query, skills }) {
+  refresh();
   const list = (Array.isArray(skills) ? skills : String(skills ?? '').split(','))
     .map((s) => s.trim()).filter(Boolean);
   assertBoardSkills('sol', list);
@@ -303,6 +357,7 @@ export function solParams({ preset = 'remote', query, skills }) {
  * anything else is passed through as a literal tag.
  */
 export function resolveTags(wanted) {
+  refresh();
   const list = Array.isArray(wanted) ? wanted : String(wanted ?? '').split(',');
   return list.flatMap((w) => {
     const key = String(w).trim();
@@ -354,6 +409,7 @@ function hcQualifications(grades) {
  * an address.
  */
 export function hcParams({ preset = 'remote', query, skills, grades = GRADES }) {
+  refresh();
   const list = (Array.isArray(skills) ? skills : String(skills ?? '').split(','))
     .map((s) => s.trim()).filter(Boolean);
   assertBoardSkills('hc', list);
@@ -382,6 +438,7 @@ export function hcParams({ preset = 'remote', query, skills, grades = GRADES }) 
  * had already been read and paid for.
  */
 export function watchlist() {
+  refresh();
   const entries = PROFILE.watchlist ?? [];
   if (!Array.isArray(entries)) {
     throw new Error(`${PROFILE.source}: watchlist must be a list of `
@@ -414,6 +471,7 @@ export function watchlist() {
  * was not asked for rather than that its list is empty.
  */
 export function signalConfig() {
+  refresh();
   const raw = PROFILE.signals;
   if (raw === undefined || raw === null) return {};
   if (typeof raw !== 'object' || Array.isArray(raw)) {
@@ -446,4 +504,54 @@ export function signalConfig() {
   return config;
 }
 
-export { ROLES, GRADES, RELOCATION_COUNTRIES, AF_PRESETS, TM_PRESETS, TM_DATES, afFilters, tmParams };
+// Last, because everything it derives is defined above it.
+adopt(loadProfile(), (() => { try { return statSync(profilePath()).mtimeMs; } catch { return null; } })());
+
+export { TM_PRESETS, TM_DATES, afFilters, tmParams };
+
+// How far back each `since` reaches, in days. The boards that have a date filter
+// apply it themselves; this is for the one source that carries dates and has no
+// filter, so the cut happens here or not at all.
+const SINCE_DAYS = { '24h': 1, '3d': 3, week: 7, '2w': 14, month: 31 };
+
+/**
+ * Titles to drop, and optionally the only ones to keep.
+ *
+ * A board that cannot filter by role - because filtering by role throws away
+ * most of it - returns everything, and most of everything is somebody else's
+ * job. The list is a profile's own regexes rather than a judgement in code: a
+ * person reads it and edits it in a minute, and it is theirs to disagree with.
+ *
+ * Compiled at load so a bad pattern is a configuration error with an address,
+ * not a run that quietly matches nothing.
+ */
+function patterns(value, key) {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) {
+    throw new Error(`${PROFILE.source}: ${key} must be a list of regular expressions`);
+  }
+  return value.map((p) => {
+    try {
+      return new RegExp(p, 'i');
+    } catch (err) {
+      throw new Error(`${PROFILE.source}: ${key} has a pattern that is not a regular `
+        + `expression - ${JSON.stringify(p)}: ${err.message}`);
+    }
+  });
+}
+
+export function titleFilter() {
+  refresh();
+  return {
+    exclude: patterns(PROFILE.titleExclude, 'titleExclude'),
+    include: patterns(PROFILE.titleInclude, 'titleInclude'),
+  };
+}
+
+/** The oldest date a `since` admits, as `YYYY-MM-DD`, or null for no cut. */
+export function sinceCutoff(since) {
+  const days = SINCE_DAYS[since];
+  if (!days) return null;
+  return new Date(Date.now() - days * 86400e3).toISOString().slice(0, 10);
+}
+

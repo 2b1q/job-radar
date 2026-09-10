@@ -150,7 +150,7 @@ test('every board that stores a run stores what it cost', async () => {
   // before the store is touched, so an uncounted run is an error rather than a
   // zero that reads as a free run.
   await search({ source: 'af', pages: 1 });
-  await search({ source: 'tm', pages: 1 });
+  await search({ source: 'tm', pages: 1, category: '903' });
   const runs = rows('SELECT source, requests FROM runs');
   assert.deepEqual([...new Set(runs.map((r) => r.source))].sort(), ['af', 'hc', 'sol', 'tm', 'w3']);
   for (const r of runs) {
@@ -197,6 +197,98 @@ test('the watchlist source reaches the store, with its signals and its link', as
   });
 });
 
+test('what the filters count is what the list actually lost', async () => {
+  // The defect this checks for: every filter counted correctly and then wrote
+  // the unfiltered list back over its own result, so the numbers were honest
+  // and the postings beside them were not.
+  await withServer('server-store-test-arith', { JOBS_PROFILE: 'frontend-wallets' }, async (c) => {
+    const res = await c.callTool({
+      name: 'jobs_search',
+      arguments: { source: 'af', pages: 1, query: 'mixed', dryRun: true, onlyNew: false, showFiltered: true },
+    });
+    const out = JSON.parse(res.content[0].text);
+
+    assert.equal(out.collected, 4, 'the board returned four');
+    assert.equal(out.titleFiltered, 1, 'one title the profile excludes');
+    assert.deepEqual(out.filteredTitles, ['Head of Sales']);
+    assert.equal(out.collapsed, 1, 'and one of the two identical postings');
+    assert.equal(out.returned, 2);
+    assert.equal(out.jobs.length, 2, 'the list is what the counters say it is');
+
+    const titles = out.jobs.map((j) => j.title).sort();
+    assert.deepEqual(titles, ['Backend Engineer', 'Platform Engineer']);
+    assert.equal(out.jobs.some((j) => j.title === 'Head of Sales'), false,
+                 'an excluded title is not in the list it was excluded from');
+  });
+});
+
+test('and the answer adds up', async () => {
+  await withServer('server-store-test-arith2', { JOBS_PROFILE: 'frontend-wallets' }, async (c) => {
+    const res = await c.callTool({
+      name: 'jobs_search',
+      arguments: { source: 'af', pages: 1, query: 'mixed', onlyNew: true, showFiltered: true },
+    });
+    const out = JSON.parse(res.content[0].text);
+    const dropped = (out.titleFiltered ?? 0) + (out.collapsed ?? 0)
+      + (out.skipped?.seen ?? 0) + (out.skipped?.merged?.length ?? 0);
+    assert.equal(out.collected - dropped, out.returned,
+                 `collected ${out.collected} minus ${dropped} dropped should be returned ${out.returned}`);
+    assert.equal(out.returned, out.jobs.length);
+  });
+});
+
+test('an excluded posting is not written to the store either', async () => {
+  await withServer('server-store-test-arith3', { JOBS_PROFILE: 'frontend-wallets' }, async (c) => {
+    await c.callTool({
+      name: 'jobs_search',
+      arguments: { source: 'af', pages: 1, query: 'mixed', onlyNew: true },
+    });
+    assert.equal(rows("SELECT id FROM jobs WHERE title = 'Head of Sales'").length, 0,
+                 'it was filtered before the store saw it');
+    assert.ok(rows("SELECT id FROM jobs WHERE title = 'Backend Engineer' AND source = 'af'").length > 0);
+  });
+});
+
+test('a title filter cuts, and never silently', async () => {
+  // A board that cannot filter by role returns everything; the profile says
+  // which titles are somebody else's job, and the answer says what it dropped.
+  await withServer('server-store-test-titles', { JOBS_PROFILE: 'frontend-wallets' }, async (c) => {
+    const res = await c.callTool({
+      name: 'jobs_search',
+      arguments: { source: 'af', pages: 1, dryRun: true, showFiltered: true },
+    });
+    const out = JSON.parse(res.content[0].text);
+    assert.equal(out.titleFiltered, 0, 'the stub titles are all engineering');
+
+    const sales = await c.callTool({
+      name: 'jobs_search',
+      arguments: { source: 'w3', pages: 1, dryRun: true, showFiltered: true, skills: 'node' },
+    });
+    const w3 = JSON.parse(sales.content[0].text);
+    assert.equal(typeof w3.titleFiltered, 'number', 'the count is always reported');
+  });
+});
+
+test('an answer that is not filtering to the new ones says what is already known', async () => {
+  // A posting already marked `skip` used to come back looking untouched.
+  await search({ source: 'sol', pages: 1, skills: 'rust' });
+  const stored = rows("SELECT id FROM jobs WHERE source = 'sol' LIMIT 1")[0].id;
+  await client.callTool({ name: 'jobs_mark_status', arguments: { id: stored, status: 'skip', note: 'not this one' } });
+
+  const again = await search({ source: 'sol', pages: 1, skills: 'rust', onlyNew: false });
+  const marked = again.jobs.find((j) => j.id === stored);
+  assert.equal(marked.status, 'skip');
+  assert.equal(marked.note, 'not this one');
+});
+
+test('jobs_stats says which profile is loaded and when it was read', async () => {
+  const res = await client.callTool({ name: 'jobs_stats', arguments: {} });
+  const stats = JSON.parse(res.content[0].text);
+  assert.match(stats.profile.path, /profiles\.example\.json$/);
+  assert.match(stats.profile.mtime, /^\d{4}-\d{2}-\d{2}T/);
+  assert.ok(stats.profile.profile, 'and which profile inside it');
+});
+
 test('every source the schema declares is one the server can actually dispatch', async () => {
   // The list is written twice - SOURCE_CODES, which the schema derives from, and
   // the adapter map the dispatch reads. A code in one but not the other is
@@ -206,7 +298,10 @@ test('every source the schema declares is one the server can actually dispatch',
     const declared = tools.find((t) => t.name === 'jobs_search').inputSchema.properties.source.enum;
     assert.ok(declared.length >= 6, 'the schema names every source');
     for (const source of declared) {
-      const res = await watcher.callTool({ name: 'jobs_count', arguments: { source } });
+      // tm is the one source that refuses a request with no category, which is
+      // itself the contract - give it one so this checks dispatch, not that.
+      const args = source === 'tm' ? { source, category: '903' } : { source };
+      const res = await watcher.callTool({ name: 'jobs_count', arguments: args });
       assert.equal(res.isError, undefined, `${source}: ${res.content[0].text}`);
     }
   });

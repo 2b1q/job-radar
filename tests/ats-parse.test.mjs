@@ -148,6 +148,8 @@ test('what the watched employers have open travels beside what was collected', a
   assert.equal(out.found, 9 + 2 + 4, 'two providers state a total; the third is its own list');
   assert.equal(out.length, 6);
   assert.equal(out.complete, true);
+  assert.equal(out.errors, undefined, 'nothing failed, so nothing is reported');
+  assert.deepEqual(out.companies.map((c) => c.slug), ['gammaco', 'deltalabs', 'epsilongroup']);
 });
 
 test('a walk cut short says so instead of reading as the whole watchlist', async () => {
@@ -166,9 +168,13 @@ test('a query is a local filter here, and the answer says how much it dropped', 
   assert.equal(out.filtered, 1);
 });
 
-test('an unknown company is an error, not an employer with nothing open', async () => {
+test('an unknown company is reported, not treated as one with nothing open', async () => {
   globalThis.fetch = async () => ({ ok: false, status: 404, json: async () => ({}) });
-  await assert.rejects(() => search({ watchlist: [ENTRY.greenhouse] }, 1), /has no board "gammaco"/);
+  const out = await search({ watchlist: [ENTRY.greenhouse] }, 1);
+  assert.equal(out.length, 0);
+  assert.match(out.errors[0].message, /has no board "gammaco"/);
+  assert.equal(out.errors[0].slug, 'gammaco');
+  assert.equal(out.complete, false, 'a company that did not answer is not a complete read');
 });
 
 test('a redirect is an unknown company too, and is never followed', async () => {
@@ -179,11 +185,28 @@ test('a redirect is an unknown company too, and is never followed', async () => 
     seen.push(init.redirect);
     return { ok: false, status: 302, json: async () => ({}) };
   };
-  await assert.rejects(() => search({ watchlist: [ENTRY.bamboohr] }, 1), /has no board "epsilongroup"/);
+  const out = await search({ watchlist: [ENTRY.bamboohr] }, 1);
+  assert.match(out.errors[0].message, /has no board "epsilongroup"/);
   assert.deepEqual(seen, ['manual']);
 });
 
 test('an answer without a list of postings is refused', async () => {
   globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ meta: { total: 3 } }) });
-  await assert.rejects(() => search({ watchlist: [ENTRY.greenhouse] }, 1), /without a list of postings/);
+  const out = await search({ watchlist: [ENTRY.greenhouse] }, 1);
+  assert.match(out.errors[0].message, /without a list of postings/);
+});
+
+test('one bad company does not cost the ones after it', async () => {
+  // The failure this isolation exists for: the first slug in a watchlist had
+  // gone stale, and it took the whole source down with it.
+  globalThis.fetch = async (url) => (String(url).includes('greenhouse.io')
+    ? { ok: false, status: 404, json: async () => ({}) }
+    : { ok: true, status: 200, json: async () => PAYLOAD.ashby });
+  const out = await search({ watchlist: [ENTRY.greenhouse, ENTRY.ashby] }, 2);
+  assert.equal(out.length, 2, 'the second company still answered');
+  assert.equal(out.errors.length, 1);
+  assert.equal(out.errors[0].slug, 'gammaco');
+  assert.deepEqual(out.companies.map((c) => c.slug), ['deltalabs'], 'only the one that answered counts');
+  assert.equal(out.found, 2, 'and the total is over the companies that answered');
+  assert.equal(out.complete, false);
 });

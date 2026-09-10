@@ -56,6 +56,11 @@ const ONSITE = [
 // come in, and had to stop matching.
 const ONSITE_OPTIONAL = /\b(?:optional|if you (?:prefer|wish|want)|as an option|available|whenever you|when you like|not required|no requirement|fully remote|remote[\s-]first|work from anywhere)\b/i;
 
+// An office named as a perk is not an office you have to be in. Measured twice
+// in the wild on the same shape: "In-office meals", "In-Office Group Meals".
+// A benefits list mentions the office more often than a requirement does.
+const PERK = /\b(?:meals?|snacks?|lunch(?:es)?|dinners?|breakfast|coffee|drinks|perks?|benefits?|stipends?|allowance|gym|parking|budget|reimburse\w*|catered|catering)\b/i;
+
 // "Go and/or Node.js" names an alternative; "strong production experience in Go"
 // names a requirement. Only the second is a wall, and telling them apart is the
 // point - a title and a tag list agree with neither.
@@ -187,7 +192,8 @@ export function detectSignals(text, config = {}) {
   if (config.onsite) {
     for (const { re, ambiguous } of ONSITE) {
       const hit = findIn(lines, new RegExp(re.source, 'gi'), (line, at, len) => (
-        !ONSITE_OPTIONAL.test(line) && (!ambiguous || governed(line, at, len, 'onsite'))
+        !ONSITE_OPTIONAL.test(line) && !PERK.test(line)
+        && (!ambiguous || governed(line, at, len, 'onsite'))
       ));
       if (hit) { add(SIGNALS.onsite, 'onsite', hit); break; }
     }

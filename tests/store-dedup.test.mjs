@@ -176,3 +176,44 @@ test('and the two copies meet at insert, not only in the key', () => {
     job({ id: 'w3:800', company: 'DeltaCo', title: 'Backend Developer' }),
   ]).length, 0, 'the space never reached the comparison');
 });
+
+// One board writes a template tail into its titles that no other board uses.
+test('a template tail does not keep one posting from meeting its twin', () => {
+  const board = {
+    id: 'w3:770001', source: 'w3', company: 'GammaCo', title: 'Senior Backend Engineer',
+    url: 'https://web3.career/1', country: 'Remote', salaryLabel: 'not stated', skills: [],
+  };
+  assert.equal(store.filterFresh([board]).length, 1);
+
+  const withTail = {
+    ...board, id: 'tm:770002', source: 'tm',
+    title: 'Senior Backend Engineer для Fintech', url: 'https://talent-move.ru/2',
+  };
+  const second = store.filterFresh([withTail]);
+  assert.equal(second.length, 0, 'the tail is the only difference, and it is one board habit');
+  assert.equal(second.skipped.merged[0].into, 'w3:770001');
+});
+
+test('but it never merges two postings from the same board', () => {
+  // Measured before this was written: cutting the tail out of the key itself
+  // bought zero cross-board matches and merged two postings from ONE board,
+  // which is the trade this store refuses.
+  const one = {
+    id: '880001', source: 'af', company: 'DeltaCo', title: 'Senior Backend Developer',
+    url: 'https://example.invalid/1', country: 'Remote', salaryLabel: 'not stated', skills: [],
+  };
+  const two = { ...one, id: '880002', title: 'Senior Backend Developer для Billing' };
+  assert.equal(store.filterFresh([one]).length, 1);
+  assert.equal(store.filterFresh([two]).length, 1, 'same board, so both stay');
+});
+
+test('and a tail that leaves too little is not cut at all', () => {
+  const short = {
+    id: 'tm:880003', source: 'tm', company: 'EpsilonCo', title: 'Разработчик для Fintech',
+    url: 'https://talent-move.ru/3', country: 'Remote', salaryLabel: 'not stated', skills: [],
+  };
+  const other = { ...short, id: 'w3:880004', source: 'w3', title: 'Разработчик' };
+  assert.equal(store.filterFresh([other]).length, 1);
+  assert.equal(store.filterFresh([short]).length, 1,
+               'cutting to two words would take every posting at that company with it');
+});

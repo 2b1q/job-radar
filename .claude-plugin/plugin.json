@@ -1,7 +1,7 @@
 {
   "name": "job-radar",
   "description": "Several job boards behind one MCP interface, with a memory of everything it has already shown you: cross-board dedup, honest apply links, and a store that remembers what you did with each posting.",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "author": {
     "name": "2b1q",
     "url": "https://github.com/2b1q"

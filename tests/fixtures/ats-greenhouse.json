@@ -1,4 +1,5 @@
 {
+  "_comment": "SYNTHETIC fixture. Not a captured response: the shape is Greenhouse's own, the companies, ids and posting text are invented. `content` is escaped twice on purpose - that is what the provider sends, and it is what the double decode is tested against.",
   "jobs": [
     {
       "id": 7000001,

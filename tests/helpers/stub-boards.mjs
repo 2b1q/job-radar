@@ -27,6 +27,20 @@ const reply = (url, body) => ({
 // AgileFluent answers JSON over POST; its `url` field is a JWT whose payload
 // carries the real link, so the fixture has to be built rather than stored.
 const token = (url) => `x.${Buffer.from(JSON.stringify({ url })).toString('base64')}.y`;
+// Three postings for the arithmetic test: one an excluded title, and two that
+// are the same posting under different ids.
+const afMixed = [
+  { id: 26200001, companyName: 'GammaCo', title: 'Backend Engineer' },
+  { id: 26200002, companyName: 'GammaCo', title: 'Head of Sales' },
+  { id: 26200003, companyName: 'DeltaCo', title: 'Platform Engineer' },
+  { id: 26200004, companyName: 'DeltaCo', title: 'Platform Engineer' },
+].map((j) => ({
+  ...j,
+  url: token(`https://jobs.ashbyhq.com/x/${j.id}`),
+  country: 'RS', format: 'remote', salaryLabel: 'not stated', salaryMinUsd: null,
+  createdAtIso: '2026-09-09T00:00:00.000Z',
+}));
+
 const afJobs = (n) => Array.from({ length: n }, (_, i) => ({
   id: 26100000 + i,
   companyName: `StubCo ${i}`,
@@ -101,9 +115,14 @@ globalThis.fetch = async (input, init = {}) => {
   if (url.includes('/tm/v1/search-skills')) return reply(url, JSON.stringify({ results: [] }));
   if (url.includes('/api/jobs/search')) {
     const { filters, pagination } = JSON.parse(init.body || '{}');
-    const data = filters?.searchQuery === 'twin' ? [afTwin] : afJobs(2);
+    const data = filters?.searchQuery === 'twin' ? [afTwin]
+      : filters?.searchQuery === 'mixed' ? afMixed
+        : afJobs(2);
     return reply(url, JSON.stringify({ data, hasMore: (pagination?.page || 1) < 1 }));
   }
-  if (url.includes('/api/jobs/count')) return reply(url, JSON.stringify({ totalCount: 2 }));
+  if (url.includes('/api/jobs/count')) {
+    const { filters } = JSON.parse(init.body || '{}');
+    return reply(url, JSON.stringify({ totalCount: filters?.searchQuery === 'mixed' ? afMixed.length : 2 }));
+  }
   throw new Error(`stub-boards: nothing is stubbed for ${url}`);
 };

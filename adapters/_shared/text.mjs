@@ -16,12 +16,37 @@
 
 const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', '#39': "'" };
 
-/** Undo the handful of HTML entities that reach us through titles and tags. */
-export const decode = (s) => String(s ?? '').replace(/&(#?\w+);/g, (m, e) => ENTITIES[e] ?? m);
+/**
+ * Undo the HTML entities that reach us through titles and tags, to a fixed
+ * point: one board escapes its envelope twice, so `&amp;amp;` arrives where
+ * `&` was meant and a single pass leaves `&amp;` in the title. That title then
+ * builds a dup_key no other board can meet.
+ */
+export function decode(s) {
+  let out = String(s ?? '');
+  for (let pass = 0; pass < 4; pass++) {
+    const next = out.replace(/&(#?\w+);/g, (m, e) => ENTITIES[e] ?? m);
+    if (next === out) return out;
+    out = next;
+  }
+  return out;
+}
 
-/** Tags out, entities decoded, whitespace collapsed. Human-readable text. */
-export const strip = (s) => decode(String(s ?? '').replace(/<[^>]+>/g, ' '))
-  .replace(/\s+/g, ' ')
+// A closing block tag is a sentence boundary; a space is not. Greenhouse sends
+// a posting as HTML, and flattening `</li>` to a space glued a list of bullets
+// into one "sentence", so a quote ran from an office requirement straight into
+// the next heading.
+const BLOCK_END = /<\/(?:p|li|ul|ol|h[1-6]|div|section|tr|td|blockquote)\s*>|<br\s*\/?>/gi;
+
+/**
+ * Tags out, entities decoded, whitespace collapsed. Human-readable text.
+ *
+ * Newlines survive: `sentences()` in `_shared/signals.mjs` splits on them, and
+ * they are the only trace a list leaves once the tags are gone.
+ */
+export const strip = (s) => decode(String(s ?? '').replace(BLOCK_END, '\n').replace(/<[^>]+>/g, ' '))
+  .replace(/[ \t\u00a0]+/g, ' ')
+  .replace(/\s*\n\s*/g, '\n')
   .trim();
 
 /**

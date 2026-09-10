@@ -59,6 +59,25 @@ test('a work-arrangement word is not one unless it describes the work', () => {
   }
 });
 
+test('an office named as a perk is not an office you must be in', () => {
+  // Two live false positives of the same shape: a benefits list mentions the
+  // office more often than a requirement does.
+  for (const sentence of [
+    'In-office meals and snacks are provided every day',
+    'In-Office Group Meals, gym reimbursement and a learning budget',
+    'Perks include an on-site barista and catered lunches',
+  ]) {
+    assert.deepEqual(detectSignals(sentence, { onsite: true }), [], sentence);
+  }
+  // And the requirement in the next sentence still lands.
+  const found = detectSignals(
+    'In-office meals are provided. This is a hybrid role, three days a week in the office',
+    { onsite: true },
+  );
+  assert.equal(found.length, 1);
+  assert.match(found[0].quote, /hybrid role/);
+});
+
 test('an arrangement stated without a noun still counts', () => {
   // Where the rule above stops: this names no role and no office and is still an
   // arrangement. A phrase carrying its own subject needs no neighbour to vouch

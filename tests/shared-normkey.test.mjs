@@ -11,7 +11,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { normKey } from '../adapters/_shared/text.mjs';
+import { decode, normKey, strip } from '../adapters/_shared/text.mjs';
 import { filterByTags } from '../adapters/talentmove.mjs';
 import { pair } from '../adapters/web3career.mjs';
 
@@ -55,4 +55,28 @@ test('and the three agree with each other, not just internally', () => {
   const viaKey = normKey('Backend & Data');
   const viaStore = store.dupKey('X', 'Backend &amp; Data').split('|')[1];
   assert.equal(viaStore, viaKey);
+});
+
+test('entities are decoded to a fixed point, not once', () => {
+  // One board escapes its envelope twice. A single pass left `&amp;` in the
+  // title, and that title built a dup_key no other board could meet.
+  assert.equal(decode('Backend &amp;amp; Blockchain'), 'Backend & Blockchain');
+  assert.equal(strip('Engineer, Backend &amp;amp; Data'), 'Engineer, Backend & Data');
+  assert.equal(normKey('Backend &amp;amp; Data'), normKey('Backend & Data'),
+               'the two spellings now meet in the dedup key');
+});
+
+test('a closing block tag ends a sentence; a space does not', () => {
+  // Measured on a live posting: flattening `</li>` to a space glued a list into
+  // one sentence, and an office requirement was quoted together with the
+  // heading that followed it.
+  const html = '<ul><li>Ability to work in our NYC office</li>'
+    + '<li>~3 days in office weekly</li></ul><h3>Nice to Have</h3><p>Snowflake</p>';
+  assert.deepEqual(strip(html).split('\n'),
+                   ['Ability to work in our NYC office', '~3 days in office weekly',
+                    'Nice to Have', 'Snowflake']);
+});
+
+test('and a title with no markup is untouched by either', () => {
+  assert.equal(strip('  Senior   Backend Engineer  '), 'Senior Backend Engineer');
 });

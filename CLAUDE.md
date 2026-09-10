@@ -182,9 +182,13 @@ Do not commit, amend, push, or create a branch unless asked in that message.
   rather than writing prose around it
 - **Declarative code, thin comments.** A name, a small function or an exported constant
   beats a paragraph explaining a clever line — reach for a comment only after the code
-  cannot be made to say it. One or two lines, three at the ceiling, and only the
-  non-obvious *why*. A comment growing past that is the signal to fix the code or move
-  the prose to `notes/` (see `.claude/rules/documentation.md`)
+  cannot be made to say it. **Inside a function: one or two lines, three at the ceiling**,
+  and only the non-obvious *why*. A comment growing past that is the signal to fix the
+  code or move the prose to `notes/`
+- **A file header and a doc comment are the exception, and the only one.** Every adapter
+  opens with what its board actually answers and what it refuses — the reconnaissance the
+  next person would otherwise repeat. Keep the *numbers* out of it: a measurement lives in
+  `notes/` and the header points there (see `.claude/rules/documentation.md`)
 
 ## Standing debt — recorded, not to be refactored
 

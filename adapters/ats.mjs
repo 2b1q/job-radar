@@ -202,35 +202,56 @@ const titleMatches = (title, query) => title.toLowerCase().includes(query.toLowe
  * parameter. It is reported as `filtered` rather than folded into the totals: a
  * local filter and a board's own answer are different facts about a run.
  */
+/**
+ * Read each company, and let one refusal cost only that company.
+ *
+ * A watchlist is a list of independent employers: a slug that has gone stale
+ * says nothing about the next one. Throwing lost every company already read and
+ * never reached the rest, so one wrong entry took the whole source down.
+ */
+async function walk(read, onCompany) {
+  const errors = [];
+  const companies = [];
+  for (const [index, entry] of read.entries()) {
+    try {
+      const { list, total } = await get(entry);
+      companies.push({ provider: entry.provider, slug: entry.slug, found: total });
+      onCompany(entry, list);
+    } catch (err) {
+      errors.push({ provider: entry.provider, slug: entry.slug, message: err.message });
+    }
+    if (index < read.length - 1) await http.throttle();
+  }
+  return { errors, companies };
+}
+
+/** Totals over the companies that answered, and whether that was all of them. */
+function summarise(out, { errors, companies }, watchlist, read) {
+  out.found = companies.reduce((n, c) => n + c.found, 0);
+  out.companies = companies;
+  out.complete = read.length === watchlist.length && errors.length === 0;
+  if (errors.length) out.errors = errors;
+  return out;
+}
+
 export async function search({ watchlist = [], query = '', signalConfig = {} } = {}, maxCompanies = 10) {
   const out = [];
   const read = watchlist.slice(0, maxCompanies);
-  let total = 0;
   let filtered = 0;
-  for (const [index, entry] of read.entries()) {
-    const { list, total: stated } = await get(entry);
-    total += stated;
+  const walked = await walk(read, (entry, list) => {
     for (const raw of list) {
       const job = normalize(PROVIDERS[entry.provider].record(raw, entry), entry, signalConfig);
       if (query && !titleMatches(job.title, query)) { filtered += 1; continue; }
       out.push(job);
     }
-    if (index < read.length - 1) await http.throttle();
-  }
-  // What the watched companies have open, next to what was collected after the
-  // local filter - and whether the whole list was read at all.
-  out.found = total;
-  out.complete = read.length === watchlist.length;
+  });
+  summarise(out, walked, watchlist, read);
   if (query) out.filtered = filtered;
   return out;
 }
 
 export async function count({ watchlist = [] } = {}, maxCompanies = 10) {
   const read = watchlist.slice(0, maxCompanies);
-  let found = 0;
-  for (const [index, entry] of read.entries()) {
-    found += (await get(entry)).total;
-    if (index < read.length - 1) await http.throttle();
-  }
-  return { found, companies: read.length, complete: read.length === watchlist.length };
+  const walked = await walk(read, () => {});
+  return summarise({}, walked, watchlist, read);
 }

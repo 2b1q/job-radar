@@ -1,4 +1,5 @@
 {
+  "_comment": "SYNTHETIC fixture. Not a captured response: the shape is career.habr.com's own API, the companies, ids and salaries are invented. One record is remote with skills and a salary, one is neither, which is the pair the parser has to keep apart.",
   "list": [
     {
       "id": 1000000001,

@@ -104,3 +104,37 @@ Whether any of the three rate limits an anonymous reader, and at what. A
 watchlist read is one request per company rather than a walk, so the totals are
 small — but small is not the same as measured, and the pace is set at the public
 boards' rather than at what these hosts would tolerate.
+
+## One bad slug used to end the whole run
+
+`get()` throws on 404 and on a redirect, and the walk had no `catch`. A watchlist
+is a list of *independent* employers, so a slug that has gone stale says nothing
+about the next one — but the first failure discarded every company already read
+and never reached the rest. A company that renames its board instance takes the
+source down until somebody edits the profile.
+
+Now a failure costs only its own company: it lands in `errors: [{provider, slug,
+message}]`, `found` counts the companies that answered, `companies` lists them,
+and `complete` is false while any of them failed.
+
+## The window walks itself
+
+`slice(0, maxCompanies)` always read the same head. One call fits eight to ten
+companies inside a 60-second client timeout, so on a longer watchlist the tail
+was reachable only by reordering the profile and restarting.
+
+The store now keeps `ats_reads(provider, slug, read_at)` and each call reads the
+`pages` companies **read longest ago**, never-read first, ties in profile order.
+A fresh watchlist walks top to bottom; after that every call moves the window
+itself and the order in the profile stops mattering. Companies are stamped
+whether or not they answered, so a slug that 404s every time cannot hold the
+window still.
+
+`watchlist: { size, read }` says how much of the list this call covered.
+
+## `since`, applied here because no provider offers it
+
+Greenhouse states `first_published` and Ashby `publishedAt`; BambooHR's list
+states no date at all. So the cut is local: `dateFiltered` counts what it
+dropped, and a posting with **no** date is kept and counted in `undated` rather
+than dropped on a guess.

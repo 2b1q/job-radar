@@ -31,8 +31,9 @@ import * as store from './store.mjs';
 // Dynamic, so a missing or broken profile reaches the operator as one line
 // rather than as a module-loading stack trace on a transport nobody is reading
 // yet.
-const { SOURCE_CODES, afFilters, hcParams, resolveTags, signalConfig, solParams,
-        tmParams, w3Tag, watchlist } = await import('./params.mjs')
+const { CATEGORIES, SOURCE_CODES, afFilters, hcParams, profileStatus, resolveTags,
+        signalConfig, sinceCutoff, solParams, titleFilter, tmParams, w3Tag,
+        watchlist } = await import('./params.mjs')
   .catch((err) => {
     console.error(`job-radar: ${err.message}`);
     process.exit(2);
@@ -44,7 +45,7 @@ const SOURCES = { af: agilefluent, tm: talentmove, w3: web3career, sol: solana, 
 const json = (obj) => ({ content: [{ type: 'text', text: JSON.stringify(obj, null, 2) }] });
 
 // The server name is the project; the tool names are not - see CLAUDE.md.
-const server = new McpServer({ name: 'job-radar', version: '2.1.0' });
+const server = new McpServer({ name: 'job-radar', version: '2.2.0' });
 
 const sourceSchema = z.enum(SOURCE_CODES);
 const presetSchema = z.enum(['remote', 'ruroots', 'countries', 'anywhere']);
@@ -56,7 +57,7 @@ server.registerTool(
     title: 'Count matching jobs',
     // Reads a board and nothing else: no row, no run log, no mark.
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
-    description: 'Quick count for one source. source: af (AgileFluent), tm (TalentMove), w3 (web3.career), sol (jobs.solana.com), hc (career.habr.com) or ats (the employer watchlist from the active profile). AgileFluent presets: remote, ruroots (russian-roots companies), countries (the relocation list from the active profile), anywhere. On af the profile roles and grades go into every request and BOTH CUT SILENTLY: the board leaves role unset on about half its postings and grade on a third, so a non-empty roles or grades discards those before any other filter runs and nothing in the answer says so. roles is not a vocabulary the board publishes - an unrecognised value crashes jobs_count with HTTP 500 rather than returning zero, and the accepted spellings are exact, case and spaces included. Empty lists filter nothing and are the way to see the whole board. TalentMove takes an optional category taxonomy id and skills (slugs from search-skills, comma separated or an array). web3.career ignores presets: it is addressed by tag page, so pass the tag slug as skills. The slugs belong to this board alone; the profile keeps them under skills.w3. jobs.solana.com takes one free-text term - pass it as query or as the first skills entry - plus the remote preset. career.habr.com takes free text as query and the remote preset; the profile grades become its qualification filter. It has no date filter, so since is not applied there. Its skills are numeric term ids from /api/frontend/suggestions/skills?term=<word>, not the slugs it displays - a slug returns a silent zero. ats reads one company instance per request and counts what those employers have open.',
+    description: 'Quick count for one source. source: af (AgileFluent), tm (TalentMove), w3 (web3.career), sol (jobs.solana.com), hc (career.habr.com) or ats (the employer watchlist from the active profile). AgileFluent presets: remote, ruroots (russian-roots companies), countries (the relocation list from the active profile), anywhere. On af the profile roles and grades go into every request and BOTH CUT SILENTLY: the board leaves role unset on about half its postings and grade on a third, so a non-empty roles or grades discards those before any other filter runs and nothing in the answer says so. roles is not a vocabulary the board publishes - an unrecognised value crashes jobs_count with HTTP 500 rather than returning zero, and the accepted spellings are exact, case and spaces included. Empty lists filter nothing and are the way to see the whole board. TalentMove REQUIRES a category taxonomy id - the board answers HTTP 400 without one, and query is not sent to this board at all, so it is refused here rather than dropped. It also takes skills (slugs from search-skills, comma separated or an array). web3.career ignores presets: it is addressed by tag page, so pass the tag slug as skills. The slugs belong to this board alone; the profile keeps them under skills.w3. jobs.solana.com takes one free-text term - pass it as query or as the first skills entry - plus the remote preset. career.habr.com takes free text as query and the remote preset; the profile grades become its qualification filter. It has no date filter, so since is not applied there. Its skills are numeric term ids from /api/frontend/suggestions/skills?term=<word>, not the slugs it displays - a slug returns a silent zero. ats reads one company instance per request, starting with the ones read longest ago; watchlist says how many employers exist and how many this call reached, and complete is true only when that was all of them AND every one answered - a shorter walk or a single failing company makes it false.',
     inputSchema: {
       source: sourceSchema.optional(),
       preset: presetSchema.optional(),
@@ -81,9 +82,17 @@ server.registerTool(
         const counted = await solana.count(params);
         return json({ source, ...counted, ...(ignored.length ? { ignoredSkills: ignored } : {}) });
       }
-      if (source === 'tm') return json({ source, ...(await talentmove.count(tmParams({ preset, category, skills, date }))) });
+      if (source === 'tm') return json({ source, ...(await talentmove.count(tmRequest({ preset, category, skills, date, query }))) });
       if (source === 'hc') return json({ source, preset, ...(await habrcareer.count(hcParams({ preset, query, skills }))) });
-      if (source === 'ats') return json({ source, ...(await ats.count({ watchlist: watchedEmployers() })) });
+      if (source === 'ats') {
+        const { employers, window } = atsWindow(10);
+        const counted = await ats.count({ watchlist: window }, window.length);
+        store.noteAtsReads(window);
+        // The adapter only sees the window, so it would call a full window a
+        // complete read of a watchlist twice its size.
+        counted.complete = window.length === employers.length && !counted.errors;
+        return json({ source, ...counted, watchlist: { size: employers.length, read: window.length } });
+      }
       const total = await agilefluent.count(afFilters({ preset, since, query }));
       return json({ source, preset, since, totalCount: total });
     } finally {
@@ -92,13 +101,37 @@ server.registerTool(
   }
 );
 
+/**
+ * TalentMove refuses a request that carries neither a category nor its own text
+ * search, and this server never sends the text search - so `query` reached the
+ * schema, was dropped by `tmParams`, and the board answered HTTP 400 about a
+ * parameter the caller believed they had passed. Refused here instead, before
+ * the request, naming what the profile actually offers.
+ */
+function tmRequest({ preset, category, skills, date, query }) {
+  if (category === undefined || category === null || category === '') {
+    const known = Object.keys(CATEGORIES);
+    throw new Error('tm: this board needs a category - it answers HTTP 400 to a '
+      + 'request carrying neither a category nor its own text search, and this '
+      + `server does not send the text search. ${known.length
+        ? `The active profile names: ${known.join(', ')}.`
+        : 'The active profile names none; add a `categories` map or pass a raw taxonomy id.'}`);
+  }
+  if (query) {
+    throw new Error('tm: query is not a parameter this board takes from here - '
+      + 'it is filtered by category and skills. Drop query, or narrow with '
+      + '`skills` (its own slugs) and `requireTags`');
+  }
+  return tmParams({ preset, category, skills, date });
+}
+
 // TalentMove: a required tag set is a second board-side query, not a filter over
 // the cards that came back. The board matches on a posting's full tag list while
 // a card shows at most four of them - measured at 20 of 20 cards truncated - so
 // the narrowing belongs in the query wherever the board can express it. What it
 // cannot express is the AND, hence two queries intersected on ids.
-async function tmSearch({ preset, category, skills, date, requireTags, pages }) {
-  const params = tmParams({ preset, category, skills, date });
+async function tmSearch({ preset, category, skills, date, query, requireTags, pages }) {
+  const params = tmRequest({ preset, category, skills, date, query });
   const wanted = resolveTags(requireTags);
   if (!wanted.length) return talentmove.search(params, pages);
   // The slug lookup is scoped to a category, and without one there is nothing to
@@ -128,6 +161,67 @@ async function tmSearch({ preset, category, skills, date, requireTags, pages }) 
   return talentmove.searchIntersect(params, [language, wanted], pages);
 }
 
+/**
+ * Carry an array's own caveats onto a filtered copy - and nothing else.
+ *
+ * `Object.assign` was used for this and copies the INDICES too, so every filter
+ * here counted correctly and then wrote the unfiltered list back over its own
+ * result: honest numbers beside a list that ignored them.
+ */
+function carryMeta(kept, from) {
+  for (const key of Object.keys(from)) {
+    if (!/^\d+$/.test(key)) kept[key] = from[key];
+  }
+  return kept;
+}
+
+/**
+ * One posting twice inside one answer.
+ *
+ * The store collapses these when it records them, so a normal run never shows
+ * them - but `dryRun` does not touch the store, and a board that lists the same
+ * role once per country then reads as several openings.
+ */
+function collapseTwins(jobs) {
+  const seen = new Set();
+  let collapsed = 0;
+  const kept = jobs.filter((job) => {
+    const key = store.dupKey(job.company, job.title);
+    if (!key) return true;              // no company, no claim that two are one
+    if (seen.has(key)) { collapsed += 1; return false; }
+    seen.add(key);
+    return true;
+  });
+  if (!collapsed) return jobs;
+  carryMeta(kept, jobs);
+  kept.collapsed = collapsed;
+  return kept;
+}
+
+/**
+ * The profile's own title filter, over every source alike.
+ *
+ * Never silent: what it dropped is counted, and `showFiltered` hands back the
+ * titles themselves. A filter that cannot be seen is indistinguishable from a
+ * board with nothing to offer, which is the failure this repository is built
+ * around.
+ */
+function filterTitles(jobs, showFiltered) {
+  const { exclude, include } = titleFilter();
+  if (!exclude.length && !include.length) return jobs;
+  const dropped = [];
+  const kept = jobs.filter((job) => {
+    const title = job.title || '';
+    if (include.length && !include.some((re) => re.test(title))) { dropped.push(title); return false; }
+    if (exclude.some((re) => re.test(title))) { dropped.push(title); return false; }
+    return true;
+  });
+  carryMeta(kept, jobs);
+  kept.titleFiltered = dropped.length;
+  if (showFiltered && dropped.length) kept.filteredTitles = dropped;
+  return kept;
+}
+
 // The watchlist is configuration, and an empty one is the silent-zero shape this
 // repository keeps finding: a source with nothing to read answers "no jobs"
 // rather than "nobody told me whom to watch".
@@ -147,8 +241,50 @@ function watchedEmployers() {
 // pages: none of the three providers pages, and none of them offers a search
 // parameter either - so `query` is a local filter over titles and the answer
 // says how many records it dropped.
-async function atsSearch({ query, pages }) {
-  return ats.search({ watchlist: watchedEmployers(), query, signalConfig: signalConfig() }, pages);
+/**
+ * The companies to read this call: the `pages` read longest ago, never-read
+ * first. One call cannot walk a long watchlist inside a client's timeout, and
+ * `slice(0, n)` always read the same head - so the tail was reachable only by
+ * reordering the profile. Every call now moves the window itself.
+ */
+function atsWindow(pages) {
+  const employers = watchedEmployers();
+  const window = store.leastRecentlyRead(employers, pages);
+  return { employers, window };
+}
+
+/**
+ * `since` on the watchlist, applied here because no provider offers a date
+ * filter. Two of the three state a publication date and one does not, so a
+ * posting with no date is kept and counted rather than dropped on a guess.
+ */
+function applySince(jobs, since) {
+  const cutoff = sinceCutoff(since);
+  if (!cutoff) return jobs;
+  let dropped = 0;
+  let undated = 0;
+  const kept = jobs.filter((j) => {
+    if (!j.date) { undated += 1; return true; }
+    if (j.date >= cutoff) return true;
+    dropped += 1;
+    return false;
+  });
+  carryMeta(kept, jobs);
+  kept.dateFiltered = dropped;
+  if (undated) kept.undated = undated;
+  return kept;
+}
+
+async function atsSearch({ query, since, pages }) {
+  const { employers, window } = atsWindow(pages);
+  let jobs = await ats.search({ watchlist: employers.length ? window : [], query, signalConfig: signalConfig() }, window.length);
+  jobs = applySince(jobs, since);
+  // Stamped whether or not they answered: a slug that 404s every time must not
+  // hold the window still.
+  store.noteAtsReads(window);
+  jobs.complete = window.length === employers.length && !jobs.errors;
+  jobs.watchlist = { size: employers.length, read: window.length };
+  return jobs;
 }
 
 // jobs.solana.com takes one search term and a work mode, and nothing else this
@@ -173,7 +309,7 @@ server.registerTool(
     // path, and it is a parameter rather than a second tool, so the annotation
     // has to describe the default.
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-    description: 'Search a source and return jobs with real apply URLs. By default returns only jobs never seen before and records them as seen; dedup is shared across sources, so a posting republished on several surfaces returns once. source: af (AgileFluent), tm (TalentMove), w3 (web3.career, addressed by tag page - pass the tag slug as skills, which belong to this board alone), sol (jobs.solana.com, one free-text term as query or the first skills entry; it has no date filter, so since is not applied there), hc (career.habr.com, russian-language product companies; free text as query, remote preset. Like sol it has NO date filter, so since is echoed in the answer and not applied - the results are whatever the board sorts newest first. skills are its own numeric term ids, not the slugs the board shows: a slug in that parameter is answered with a silent zero. Look an id up with /api/frontend/suggestions/skills?term=<word>, which returns value as the id, and keep it under skills.hc) or ats (the employer watchlist from the active profile - Greenhouse, Ashby and BambooHR instances read one company per request, so pages means how many companies to read, and query filters titles locally because no provider offers a search). On af, query is a free-text search that is neither a phrase nor a literal match, and multi-word queries are sent as given - but they narrow very sharply and often to zero (two words survive only where they genuinely sit together in a posting, three words usually return nothing), so start with one word and add another only if the count allows. On hc, query is full text over the whole posting rather than over its stack: a hit need not carry the term in skills at all. This tool is NOT read-only by default: every posting it returns is recorded as seen, so the same search run twice returns the second answer empty. Set onlyNew=false to see everything, dryRun=true to record nothing - dryRun is the read-only way to call it. tm, w3 and hc fill the skills field; af usually leaves it empty and ats never fills it, because no ATS provider publishes one. In the answer, found is the source own total where it states one and collected is what was fetched; found null with foundUnavailable means the total could not be fetched and the jobs still could - on af the count and search endpoints have been seen disagreeing, so a dead counter no longer hides a working board; complete=false means a page or company loop stopped short and the result is a lower bound; filtered is how many records a local query dropped on ats. skipped says why the answer is shorter than what was collected: seen is this source offering the same id again, merged lists postings already stored under another id - and a merged entry carrying atEmployer is a posting that reaches the employer directly, with stored=true meaning that link was added to the row it merged into, so it can be asked for again later. applyAtEmployer says whether a job url opens the employer own application: always true on ats, true for most of sol, false on w3, tm and hc, and null on af, where nobody checked. signals and note carry what the posting own text says about work authorisation, office presence and the required backend language, quoted verbatim - they are raised where the source publishes text - ats, and af, whose summary keeps an office requirement but not a legal notice - nothing is ever dropped for them, and which phrases and languages to look for is configured in the profile. locationVerified is false everywhere: the location and work mode are what the source states, and three of them have been measured wrong.',
+    description: 'Search a source and return jobs with real apply URLs. By default returns only jobs never seen before and records them as seen; dedup is shared across sources, so a posting republished on several surfaces returns once. source: af (AgileFluent), tm (TalentMove), w3 (web3.career, addressed by tag page - pass the tag slug as skills, which belong to this board alone), sol (jobs.solana.com, one free-text term as query or the first skills entry; it has no date filter, so since is not applied there), hc (career.habr.com, russian-language product companies; free text as query, remote preset. Like sol it has NO date filter, so since is echoed in the answer and not applied - the results are whatever the board sorts newest first. skills are its own numeric term ids, not the slugs the board shows: a slug in that parameter is answered with a silent zero. Look an id up with /api/frontend/suggestions/skills?term=<word>, which returns value as the id, and keep it under skills.hc) or ats (the employer watchlist from the active profile - Greenhouse, Ashby and BambooHR instances read one company per request, so pages means how many companies to read, and query filters titles locally because no provider offers a search. The companies read are the ones read longest ago, so repeated calls walk the whole watchlist without reordering the profile; watchlist says how many exist and how many this call reached, and companies lists them. One company that fails no longer ends the run: it lands in errors and the walk continues, with found counted over the ones that answered. since IS applied here, locally, on the dates two of the three providers publish - dateFiltered says how many that dropped and undated how many carried no date and were kept). On af, query is a free-text search that is neither a phrase nor a literal match, and multi-word queries are sent as given - but they narrow very sharply and often to zero (two words survive only where they genuinely sit together in a posting, three words usually return nothing), so start with one word and add another only if the count allows. On hc, query is full text over the whole posting rather than over its stack: a hit need not carry the term in skills at all. This tool is NOT read-only by default: every posting it returns is recorded as seen, so the same search run twice returns the second answer empty. Set onlyNew=false to see everything, dryRun=true to record nothing - dryRun is the read-only way to call it. Either way the answer carries status and note for postings the store already knows, so one already marked applied or skip is not mistaken for a fresh one. tm, w3 and hc fill the skills field; af usually leaves it empty and ats never fills it, because no ATS provider publishes one. In the answer, found is the source own total where it states one and collected is what was fetched; found null with foundUnavailable means the total could not be fetched and the jobs still could - on af the count and search endpoints have been seen disagreeing, so a dead counter no longer hides a working board; complete=false means a page or company loop stopped short and the result is a lower bound; filtered is how many records a local query dropped on ats. skipped says why the answer is shorter than what was collected: seen is this source offering the same id again, merged lists postings already stored under another id - and a merged entry carrying atEmployer is a posting that reaches the employer directly, with stored=true meaning that link was added to the row it merged into, so it can be asked for again later. applyAtEmployer says whether a job url opens the employer own application: always true on ats, true for most of sol, false on w3, tm and hc, and on af read from the link host - true for an ATS or a company careers domain, false for an aggregator, null where the host settles nothing. signals and note carry what the posting own text says about work authorisation, office presence and the required backend language, quoted verbatim - they are raised where the source publishes text - ats, and af, whose summary keeps an office requirement but not a legal notice - nothing is ever dropped for them, and which phrases and languages to look for is configured in the profile. titleExclude and titleInclude in the profile are regular expressions applied to every source after collection, for the boards that cannot filter by role without discarding most of themselves; titleFiltered says how many they dropped and showFiltered=true returns the titles. locationVerified is false everywhere: the location and work mode are what the source states, and three of them have been measured wrong.',
     inputSchema: {
       source: sourceSchema.optional(),
       preset: presetSchema.optional(),
@@ -190,9 +326,10 @@ server.registerTool(
       pages: z.number().min(1).max(25).optional(),
       onlyNew: z.boolean().optional(),
       dryRun: z.boolean().optional(),
+      showFiltered: z.boolean().optional(),
     },
   },
-  async ({ source = 'af', preset = 'remote', since = 'week', query, category, skills, requireTags, date, minSalary, pages = 5, onlyNew = true, dryRun = false }) => {
+  async ({ source = 'af', preset = 'remote', since = 'week', query, category, skills, requireTags, date, minSalary, pages = 5, onlyNew = true, dryRun = false, showFiltered = false }) => {
     // Requests are counted around the call rather than reported by it: how many
     // pages a board needed is the adapter's business, and the delta is what a
     // run actually spent.
@@ -204,14 +341,15 @@ server.registerTool(
     const all = source === 'w3'
       ? await web3career.search({ tag: w3Tag(skills) }, pages)
       : source === 'tm'
-        ? await tmSearch({ preset, category, skills, date, requireTags, pages })
+        ? await tmSearch({ preset, category, skills, date, query, requireTags, pages })
         : source === 'sol'
           ? await solSearch({ preset, query, skills, pages })
           : source === 'hc'
             ? await habrcareer.search(hcParams({ preset, query, skills }), pages)
             : source === 'ats'
-              ? await atsSearch({ query, pages })
+              ? await atsSearch({ query, since, pages })
               : await agilefluent.search(afFilters({ preset, since, query, minSalary }), pages, { signalConfig: signalConfig() });
+    const collected = collapseTwins(filterTitles(all, showFiltered));
     const requests = board.requestCount() - before;
     board.endCall();
     // Checked before anything is written: `filterFresh` marks what it stores as
@@ -225,14 +363,17 @@ server.registerTool(
     // - it quotes roubles, and converting them at some rate would invent a figure
     // somebody would later quote as real. So the sort stays, and the answer says
     // what it could actually sort on.
-    const priced = all.filter((j) => j.salaryMinUsd).length;
-    all.sort((a, b) => (b.salaryMinUsd || 0) - (a.salaryMinUsd || 0));
-    const sortedBy = priced === all.length ? 'salaryMinUsd'
+    const priced = collected.filter((j) => j.salaryMinUsd).length;
+    collected.sort((a, b) => (b.salaryMinUsd || 0) - (a.salaryMinUsd || 0));
+    const sortedBy = priced === collected.length ? 'salaryMinUsd'
       : priced === 0 ? 'none - no record on this board carries a USD figure'
-        : `salaryMinUsd, but ${all.length - priced} of ${all.length} lack one and sit at the end`;
+        : `salaryMinUsd, but ${collected.length - priced} of ${collected.length} lack one and sit at the end`;
 
-    const jobs = onlyNew && !dryRun ? store.filterFresh(all) : all;
-    if (!dryRun) store.logRun(source, preset, since, all.length, jobs.length, requests);
+    // Not filtering to the new ones means the answer will contain postings the
+    // store already knows something about. Saying nothing about them is how a
+    // vacancy already marked `skip` came back looking untouched.
+    const jobs = onlyNew && !dryRun ? store.filterFresh(collected) : store.marksFor(collected);
+    if (!dryRun) store.logRun(source, preset, since, collected.length, jobs.length, requests);
 
     // An adapter hangs its caveats on the array it returns, and JSON.stringify
     // drops properties of an array. Reading them out here is what keeps "we
@@ -240,8 +381,8 @@ server.registerTool(
     // the board's own total when it states one, `collected` is what was actually
     // fetched, and the two differing is the whole message.
     const meta = {};
-    for (const key of ['complete', 'filtered', 'foundUnavailable', 'sides', 'tagLookups', 'unresolvedSkills', 'ignoredSkills']) {
-      if (all[key] !== undefined) meta[key] = all[key];
+    for (const key of ['complete', 'filtered', 'dateFiltered', 'undated', 'titleFiltered', 'filteredTitles', 'collapsed', 'foundUnavailable', 'errors', 'companies', 'watchlist', 'sides', 'tagLookups', 'unresolvedSkills', 'ignoredSkills']) {
+      if (collected[key] !== undefined) meta[key] = collected[key];
     }
     // Why the answer is shorter than what was collected. `merged` is the second
     // board's copy of a posting already stored, which is the one thing the store
@@ -281,7 +422,7 @@ server.registerTool(
     description: 'How many jobs are stored, the breakdown by status and by source, how many rows carry a way in to the employer own application (withApplyAtEmployer, by source - rows written before that was recorded are not counted), and the last run.',
     inputSchema: {},
   },
-  async () => json(store.stats())
+  async () => json({ ...store.stats(), profile: profileStatus() })
 );
 
 const transport = new StdioServerTransport();

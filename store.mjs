@@ -5,8 +5,10 @@
 // boards republish the same postings, and separate stores would surface a
 // vacancy twice, which is the thing this table exists to prevent.
 
+import { copyFileSync, existsSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 
+import { leadsToEmployer } from './adapters/_shared/apply-link.mjs';
 import { normKey } from './adapters/_shared/text.mjs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -61,12 +63,56 @@ if (!columns.has('company_from')) db.exec('ALTER TABLE jobs ADD COLUMN company_f
 // employer is the adapter's judgement, and the store does not hold one.
 if (!columns.has('apply_url')) db.exec('ALTER TABLE jobs ADD COLUMN apply_url TEXT');
 if (!columns.has('apply_from')) db.exec('ALTER TABLE jobs ADD COLUMN apply_from TEXT');
+// The looser key, kept beside the exact one - see `looseKey`. Never used to
+// join two rows from the same source.
+if (!columns.has('loose_key')) db.exec('ALTER TABLE jobs ADD COLUMN loose_key TEXT');
 const runCols = new Set(db.prepare('PRAGMA table_info(runs)').all().map((c) => c.name));
 if (!runCols.has('source')) db.exec("ALTER TABLE runs ADD COLUMN source TEXT NOT NULL DEFAULT 'af'");
 // How many HTTP requests a run cost. Throttling bounds the rate; nothing bounded
 // the total, and a board meters the total. Older rows keep NULL rather than a
 // zero, because "not recorded" and "made none" are different facts.
 if (!runCols.has('requests')) db.exec('ALTER TABLE runs ADD COLUMN requests INTEGER');
+
+// When each watched employer was last read. The watchlist is longer than one
+// call can walk inside a client's timeout, so `slice(0, n)` always read the same
+// head and the tail was reachable only by reordering the profile. Reading the
+// least recently read N instead makes every call move the window itself, and
+// the order in the profile stops mattering.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS ats_reads (
+    provider  TEXT NOT NULL,
+    slug      TEXT NOT NULL,
+    read_at   TEXT NOT NULL,
+    PRIMARY KEY (provider, slug)
+  );
+`);
+
+const readAt = db.prepare('SELECT provider, slug, read_at FROM ats_reads');
+const noteRead = db.prepare(
+  `INSERT INTO ats_reads (provider, slug, read_at) VALUES (?, ?, ?)
+   ON CONFLICT(provider, slug) DO UPDATE SET read_at = excluded.read_at`
+);
+
+/**
+ * The `n` watchlist entries read longest ago, never-read ones first.
+ *
+ * Ties keep the profile's own order, so a fresh watchlist is walked top to
+ * bottom on the first call and rotates from there.
+ */
+export function leastRecentlyRead(watchlist, n) {
+  const seen = new Map(readAt.all().map((r) => [`${r.provider}/${r.slug}`, r.read_at]));
+  return watchlist
+    .map((entry, order) => ({ entry, order, at: seen.get(`${entry.provider}/${entry.slug}`) ?? '' }))
+    .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.order - b.order))
+    .slice(0, n)
+    .map((x) => x.entry);
+}
+
+/** Stamp the companies a run actually reached, answered or not. */
+export function noteAtsReads(entries) {
+  const ts = today();
+  for (const e of entries) noteRead.run(e.provider, e.slug, ts);
+}
 
 // The second key. Boards mint their own ids, so one Greenhouse posting arrives
 // as `26043677` from AgileFluent and `tm:266351` from TalentMove and the id
@@ -87,6 +133,28 @@ export function dupKey(company, title) {
   // key would merge "Backend Developer" at two different companies into one.
   if (!c || !t) return null;
   return `${c}|${t}`;
+}
+
+// One board writes a template tail into its titles - `Backend Developer для
+// <something>` - that no other board uses, so the same posting cannot meet its
+// twin on the key. Cutting the tail off the key itself was measured first and
+// refused: it produced no new cross-board matches and one merge of two postings
+// from the SAME board, which is the trade this store refuses - a false merge
+// hides a live vacancy in silence. Counts in notes/dedup.md.
+//
+// So the looser key is a SECOND key, and it is only allowed to join rows from
+// DIFFERENT sources. That is the whole reason it exists: the tail is one
+// board's habit, and the merge it should enable is with a board that does not
+// have the habit. Two rows from one board keep their exact keys and stay apart.
+const TEMPLATE_TAIL = / для .*$/;
+
+/** The dedup key with one board's template tail removed, where that leaves enough. */
+export function looseKey(company, title) {
+  const cut = String(title ?? '').replace(TEMPLATE_TAIL, '').trim();
+  // Two words is not a posting; cutting to it would merge on "Backend Developer"
+  // and take every one of them at that company with it.
+  if (cut.split(/\s+/).filter(Boolean).length <= 2) return dupKey(company, title);
+  return dupKey(company, cut);
 }
 
 // Backfill, idempotent: only rows that have no key yet, computed from what was
@@ -206,14 +274,107 @@ function withCompany(job) {
 }
 
 db.exec('CREATE INDEX IF NOT EXISTS jobs_dup_key ON jobs (dup_key)');
+db.exec('CREATE INDEX IF NOT EXISTS jobs_loose_key ON jobs (loose_key)');
+
+// Backfill, idempotent: derived, so recomputed when the derivation changes.
+{
+  const rows = db.prepare('SELECT id, source, company, title, loose_key FROM jobs WHERE company IS NOT NULL').all();
+  const set = db.prepare('UPDATE jobs SET loose_key = ? WHERE id = ?');
+  let written = 0;
+  for (const row of rows) {
+    const key = looseKey(row.company, row.title);
+    if (key === row.loose_key) continue;
+    set.run(key, row.id);
+    written += 1;
+  }
+  if (written) console.error(`store: wrote ${written} loose dedup keys`);
+}
+
+// Backfill, idempotent: a link already stored that the host says reaches the
+// employer. Rows collected before anything classified them will never be read
+// again - they are `seen` - so without this the classification would only ever
+// apply to postings that have not happened yet.
+//
+// `apply_from = 'host'` because it is derived, not stated. Rows the host cannot
+// settle keep NULL, which stays "not recorded" rather than "does not reach".
+{
+  const candidates = db.prepare(
+    'SELECT id, url FROM jobs WHERE apply_url IS NULL AND url IS NOT NULL'
+  ).all().filter((r) => leadsToEmployer(r.url) === true);
+  if (candidates.length) {
+    const set = db.prepare("UPDATE jobs SET apply_url = ?, apply_from = 'host' WHERE id = ?");
+    for (const row of candidates) set.run(row.url, row.id);
+    console.error(`store: ${candidates.length} stored links classified from their host `
+      + 'as reaching the employer');
+  }
+}
+
+// One-off collapse of duplicates that predate the dedup key.
+//
+// Rows written before `dup_key` existed were deduplicated by id alone, so one
+// posting could be stored several times - 32 groups over 105 rows on the store
+// this was measured on, none of them first seen after the key started working.
+// The damage is not the extra rows: it is that a status set by hand sat on one
+// of them while its twins still read `new`.
+//
+// Destructive, so it copies the store first and says what it did. Idempotent:
+// once collapsed there are no groups left to find.
+const STATUS_RANK = ['applied', 'interview', 'rejected', 'skip', 'new'];
+const bestStatus = (rows) => STATUS_RANK.find((s) => rows.some((r) => r.status === s)) ?? 'new';
+
+{
+  const groups = db.prepare(
+    `SELECT dup_key FROM jobs WHERE dup_key IS NOT NULL GROUP BY dup_key HAVING COUNT(*) > 1`
+  ).all().map((r) => r.dup_key);
+
+  if (groups.length) {
+    const backup = `${DB_PATH}.pre-collapse.bak`;
+    if (!existsSync(backup)) copyFileSync(DB_PATH, backup);
+
+    const members = db.prepare('SELECT * FROM jobs WHERE dup_key = ? ORDER BY first_seen, id');
+    const keepRow = db.prepare(
+      `UPDATE jobs SET status = ?, note = COALESCE(?, note),
+                       apply_url = COALESCE(apply_url, ?), apply_from = COALESCE(apply_from, ?)
+        WHERE id = ?`
+    );
+    const dropRow = db.prepare('DELETE FROM jobs WHERE id = ?');
+    let removed = 0;
+
+    db.exec('BEGIN');
+    try {
+      for (const key of groups) {
+        const rows = members.all(key);
+        const [keep, ...rest] = rows;
+        // Whatever any twin knew, the survivor keeps: a status somebody set by
+        // hand, a note, and a way in to the employer.
+        const withNote = rows.find((r) => r.note);
+        const withApply = rows.find((r) => r.apply_url);
+        keepRow.run(bestStatus(rows), withNote?.note ?? null,
+                    withApply?.apply_url ?? null, withApply?.apply_from ?? null, keep.id);
+        for (const row of rest) { dropRow.run(row.id); removed += 1; }
+      }
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw new Error(`store: collapsing legacy duplicates failed and nothing was `
+        + `changed (${err.message}). The store before this run is at ${backup}`);
+    }
+    console.error(`store: collapsed ${groups.length} duplicate groups, removed `
+      + `${removed} rows, kept the earliest of each with the strongest status. `
+      + `Backup: ${backup}`);
+  }
+}
 
 const today = () => new Date().toISOString();
 
 const hasSeen = db.prepare('SELECT 1 FROM jobs WHERE id = ?');
 const hasKey = db.prepare('SELECT id FROM jobs WHERE dup_key = ?');
+// Cross-source only, by construction: one board's template tail is not a reason
+// to merge two of that board's own postings.
+const hasLooseKey = db.prepare('SELECT id FROM jobs WHERE loose_key = ? AND source <> ? LIMIT 1');
 const insertJob = db.prepare(
-  `INSERT OR IGNORE INTO jobs (id, source, company, title, url, country, salary_label, skills, dup_key, company_from, note, apply_url, first_seen)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  `INSERT OR IGNORE INTO jobs (id, source, company, title, url, country, salary_label, skills, dup_key, loose_key, company_from, note, apply_url, apply_from, first_seen)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 );
 // The one thing a merge writes to the row it is merging into, and only where
 // there was nothing there before.
@@ -256,7 +417,9 @@ export function filterFresh(jobs) {
     // The same posting under the other board's id. Skipped without touching the
     // row that is already there: it may carry a status somebody set by hand.
     const key = dupKey(job.company, job.title);
-    const already = key && hasKey.get(key);
+    const loose = looseKey(job.company, job.title);
+    const already = (key && hasKey.get(key))
+      || (loose && loose !== key && hasLooseKey.get(loose, job.source || 'af'));
     if (already) {
       // The row that is already there wins - it may carry a status somebody set
       // by hand - and none of its fields is rewritten. One thing is ADDED to it:
@@ -283,8 +446,9 @@ export function filterFresh(jobs) {
     fresh.push(job);
     insertJob.run(
       job.id, job.source || 'af', job.company, job.title, job.url, job.country,
-      job.salaryLabel, (job.skills || []).join(', ') || null, key,
-      job.companyFrom ?? null, job.note ?? null, employerUrl(job), today()
+      job.salaryLabel, (job.skills || []).join(', ') || null, key, loose,
+      job.companyFrom ?? null, job.note ?? null, employerUrl(job),
+      employerUrl(job) ? (job.applyFrom ?? null) : null, today()
     );
   }
   fresh.skipped = skipped;
@@ -340,6 +504,23 @@ export function markStatus(id, status, note) {
   return true;
 }
 
+const markRow = db.prepare('SELECT status, note FROM jobs WHERE id = ?');
+
+/**
+ * What is already known about each id, for an answer that is not filtering to
+ * the new ones. Without it a posting already marked `skip` came back looking
+ * exactly like one nobody had read.
+ */
+export function marksFor(jobs) {
+  for (const job of jobs) {
+    const row = markRow.get(job.id);
+    if (!row) continue;
+    job.status = row.status;
+    if (row.note) job.note = row.note;
+  }
+  return jobs;
+}
+
 export function stats() {
   const total = db.prepare('SELECT COUNT(*) AS n FROM jobs').get().n;
   const byStatus = db.prepare('SELECT status, COUNT(*) AS n FROM jobs GROUP BY status').all();
@@ -353,5 +534,10 @@ export function stats() {
     'SELECT source, COUNT(*) AS n FROM jobs WHERE apply_url IS NOT NULL GROUP BY source'
   ).all();
   const lastRun = db.prepare('SELECT * FROM runs ORDER BY ts DESC LIMIT 1').get() || null;
-  return { total, byStatus, bySource, withApplyAtEmployer, lastRun, requestsLast24h: requestBudget(24) };
+  // One line for the newest run says nothing about the five sources that were
+  // not it. `lastRun` stays because callers read it by name.
+  const lastRunBySource = db.prepare(
+    `SELECT source, MAX(ts) AS ts, found, fresh, requests FROM runs GROUP BY source ORDER BY source`
+  ).all();
+  return { total, byStatus, bySource, withApplyAtEmployer, lastRun, lastRunBySource, requestsLast24h: requestBudget(24) };
 }

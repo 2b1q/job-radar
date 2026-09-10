@@ -272,3 +272,33 @@ on twelve of them; a value the sample missed can still only be found by trying i
 
 Whether `roles` and `grades` drop the same records or different ones. Each was
 measured against the whole board, never against the other.
+
+## The links were classified all along, just not by us
+
+Every record arrived as `applyAtEmployer: null` — "nobody checked" — while the
+`url` field mostly pointed straight at an applicant tracking system. Counted over
+the 384 stored rows from this board:
+
+| where the link goes | rows |
+|---|---|
+| an ATS host (Lever 37, Ashby 30, Greenhouse 33, SmartRecruiters 5) | 116 |
+| a company careers subdomain | 6 |
+| an aggregator (LinkedIn 192, hh.ru 20, this repo's other boards 12) | 226 |
+| nothing the host settles — a messenger link, a plain domain | 36 |
+
+A hostname is evidence, not proof, so the answer has three values and the last
+group stays `null`. The rule is in `adapters/_shared/apply-link.mjs`; aggregators
+are checked before the `careers.`/`jobs.` shape, so `jobs.linkedin.com` stays
+false.
+
+Backfilled over the stored rows as well, because rows already collected are
+`seen` and would never be read again: **this board went from 4 rows with a
+recorded way in to 117**, and 349 across all sources. Derived rather than
+stated, so those rows carry `apply_from = 'host'`.
+
+## `preset: remote` is not strict
+
+Measured on one page of 50 under `countries_workplaces: [{workplaces:
+['remote']}]`, `since: month`: **48 remote and 2 hybrid**. The board's own
+workplace filter admits hybrid postings, so `format` is worth reading even when
+the preset says remote. Not corrected here — the field is what the board said.
