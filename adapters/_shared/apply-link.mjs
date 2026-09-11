@@ -16,11 +16,17 @@ const ATS_HOSTS = [
   'applytojob.com', 'rippling.com', 'ashby.hq',
 ];
 
-/** Hosts that are somebody else's listing: an aggregator, or a board like ours. */
+/**
+ * Hosts that are somebody else's listing: an aggregator, or a board like ours.
+ * The last two lines are boards looked at and not taken - a `jobs.` subdomain on
+ * one of them would otherwise read as a careers page. notes/sources-not-taken.md.
+ */
 const AGGREGATOR_HOSTS = [
   'linkedin.com', 'hh.ru', 'getmatch.ru', 'jobgether.com', 'indeed.com',
   'glassdoor.com', 'talent-move.ru', 'web3.career', 'djinni.co', 'career.habr.com',
   'wellfound.com', 'angel.co', 'otta.com',
+  'monster.com', 'superjob.ru', 'gorodrabot.ru', 'hirify.me', 'rabota.ru',
+  'zarplata.ru',
 ];
 
 // A subdomain a company puts its own careers page on. `careers.acme.com` is the

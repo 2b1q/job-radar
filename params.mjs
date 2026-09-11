@@ -15,6 +15,8 @@ import { fileURLToPath } from 'node:url';
 // discover halfway through a run that has already spent requests.
 import { PROVIDER_NAMES } from './adapters/ats.mjs';
 import { QUALIFICATIONS as HC_QUALIFICATIONS } from './adapters/habrcareer.mjs';
+// The boards this server speaks to, so that a source code is written once.
+import { SOURCE_CODES } from './adapters/index.mjs';
 
 // What to look for is configuration, not code. Roles, grades, the countries you
 // would move to and the tag vocabularies you care about live in profiles.json,
@@ -121,12 +123,6 @@ export function profileStatus() {
   };
 }
 
-
-/**
- * The boards this server speaks to. Kept here rather than in `server.mjs`
- * because the profile is validated against it before any adapter is wired up.
- */
-export const SOURCE_CODES = ['af', 'tm', 'w3', 'sol', 'hc', 'ats'];
 
 /** One list of slugs, checked entry by entry. */
 function skillList(value, where, file) {

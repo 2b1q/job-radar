@@ -37,6 +37,22 @@ test('somebody else listing is not', () => {
 test('an aggregator wins over the careers-subdomain shape', () => {
   // Order matters: `jobs.` in front of an aggregator is still the aggregator.
   assert.equal(leadsToEmployer('https://jobs.linkedin.com/view/1'), false);
+  // The boards looked at and not taken are on that list for this reason: each
+  // serves its postings under a `jobs.` or `careers.` host of its own.
+  assert.equal(leadsToEmployer('https://jobs.superjob.ru/vacancy/1'), false);
+});
+
+test('a board this repo decided not to read is still a board', () => {
+  // Measured in notes/sources-not-taken.md: on each of these the link stops at
+  // the board, so a posting reaching one of them is not an application.
+  for (const url of [
+    'https://www.monster.com/job-openings/1',
+    'https://russia.superjob.ru/vakansii/1.html',
+    'https://gorodrabot.ru/vacancy/1',
+    'https://hirify.me/job/1',
+    'https://www.rabota.ru/vacancy/1',
+    'https://zarplata.ru/vacancy/1',
+  ]) assert.equal(leadsToEmployer(url), false, url);
 });
 
 test('anything the host cannot settle stays null, not a guess', () => {

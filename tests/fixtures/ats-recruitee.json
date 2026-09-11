@@ -1,0 +1,51 @@
+{
+  "_comment": "SYNTHETIC fixture. Not a captured response: the shape is Recruitee's own - the careers links on the COMPANY'S OWN domain rather than on recruitee.com, a salary object that names both a currency and a period, and a published_at no date parser is required to accept - and the company, ids, urls, salaries and posting text are invented.",
+  "offers": [
+    {
+      "id": 3100001,
+      "title": "Backend Engineer",
+      "slug": "backend-engineer",
+      "company_name": "ThetaLabs",
+      "careers_url": "https://jobs.thetalabs.example/o/backend-engineer",
+      "careers_apply_url": "https://jobs.thetalabs.example/o/backend-engineer/c/new",
+      "published_at": "2026-08-19 13:55:09 UTC",
+      "created_at": "2026-08-19 08:17:13 UTC",
+      "city": "Utrecht",
+      "country_code": "NL",
+      "location": "Utrecht, Netherlands",
+      "remote": false,
+      "hybrid": true,
+      "on_site": false,
+      "department": "Engineering",
+      "tags": [],
+      "employment_type_code": "fulltime_permanent",
+      "category_code": "engineering",
+      "salary": { "min": "5200", "max": "6400", "period": "month", "currency": "EUR" },
+      "description": "<p>This is a hybrid role based in Utrecht.</p><p>Two days per week in the office is expected.</p><p>Strong production experience in Go is required.</p>",
+      "requirements": "<p>Five years of experience.</p>"
+    },
+    {
+      "id": 3100002,
+      "title": "Frontend Engineer",
+      "slug": "frontend-engineer",
+      "company_name": "ThetaLabs",
+      "careers_url": "https://jobs.thetalabs.example/o/frontend-engineer",
+      "careers_apply_url": "https://jobs.thetalabs.example/o/frontend-engineer/c/new",
+      "published_at": "2026-09-04 09:10:00 UTC",
+      "created_at": "2026-09-03 17:40:00 UTC",
+      "city": "Utrecht",
+      "country_code": "NL",
+      "location": "Remote - Netherlands",
+      "remote": true,
+      "hybrid": false,
+      "on_site": false,
+      "department": "Engineering",
+      "tags": [],
+      "employment_type_code": "fulltime_permanent",
+      "category_code": "engineering",
+      "salary": { "min": "", "max": "", "period": "month", "currency": "EUR" },
+      "description": "<p>Fully remote from the Netherlands.</p><p>An office in Utrecht is available and coming in is optional.</p>",
+      "requirements": "<p>Three years of experience.</p>"
+    }
+  ]
+}

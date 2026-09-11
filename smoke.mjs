@@ -14,14 +14,12 @@
 //
 // The query comes from the active profile, so this exercises the same path a
 // tool call takes rather than a stack somebody hard-coded here once.
-import * as agilefluent from './adapters/agilefluent.mjs';
-import * as ats from './adapters/ats.mjs';
-import * as habrcareer from './adapters/habrcareer.mjs';
-import * as solana from './adapters/solana.mjs';
-import * as talentmove from './adapters/talentmove.mjs';
-import * as web3career from './adapters/web3career.mjs';
+import { ADAPTERS, SOURCE_CODES } from './adapters/index.mjs';
 import { CATEGORIES, PROFILE, afFilters, hcParams, signalConfig, skillsFor, solParams,
          tmParams, watchlist } from './params.mjs';
+
+const { af: agilefluent, ats, hc: habrcareer, sol: solana, tm: talentmove,
+        w3: web3career } = ADAPTERS;
 
 const which = process.argv[2] || 'af';
 const arg = process.argv[3];
@@ -89,7 +87,7 @@ async function run() {
     await show(`ats (${one[0].provider}/${one[0].slug})`, (await ats.count({ watchlist: one })).found,
                await ats.search({ watchlist: one, signalConfig: signalConfig() }, 1));
   } else {
-    console.error(`unknown source "${which}" - one of: af, tm, w3, sol, hc, ats`);
+    console.error(`unknown source "${which}" - one of: ${SOURCE_CODES.join(', ')}`);
     process.exit(2);
   }
 }

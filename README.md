@@ -9,8 +9,8 @@ except the searches, which go to the boards.
 - **It finds and remembers. It does not apply.** No form is ever submitted for
   you.
 - **Most sources do not reach the employer's own application.** `ats` always
-  does — it reads the companies you name on their own Greenhouse, Ashby or
-  BambooHR — and `sol` does for most of its postings. `tm`, `w3` and `hc` link
+  does — it reads the companies you name on their own applicant tracking
+  system — and `sol` does for most of its postings. `tm`, `w3` and `hc` link
   back to themselves; on `af` nobody has classified the links. Every posting
   carries the answer in `applyAtEmployer`, `null` where it is unknown. If
   applying directly is what you came for, that is `ats`; the rest are for finding
@@ -85,7 +85,7 @@ read yesterday.
 | `sol` | jobs.solana.com | nothing | **the employer**, for most postings |
 | `hc` | career.habr.com | nothing | the board |
 | `tm` | TalentMove | **a paid account**, its session cookie in `TM_COOKIE` | the board |
-| `ats` | Greenhouse, Ashby and BambooHR instances | **a watchlist** of companies in your profile | **the employer**, always |
+| `ats` | Greenhouse, Ashby, BambooHR, Lever, Workable, Teamtailor and Recruitee instances | **a watchlist** of companies in your profile | **the employer**, always |
 
 Two of those need something before they answer at all, and it is fairer to say
 so here than to let an empty result explain it. **`tm` will not work without a

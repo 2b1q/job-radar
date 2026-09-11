@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SYNTHETIC fixture. Not a captured response: the shape is Teamtailor's own - an
+  RSS channel whose title is the COMPANY, items identified by a guid that is not
+  the link, an unprefixed remoteStatus beside namespaced tt: fields, and bodies
+  escaped as entities inside the XML text - and the company, guids, urls and
+  posting text are invented.
+
+  Three items on purpose: the three values measured in remoteStatus, a link on
+  the company's OWN domain rather than the provider's, one field the feed states
+  as empty and one title in CDATA, which no measured feed used and which a
+  reader must still not hand back as markup.
+-->
+<rss version="2.0" xmlns:tt="https://teamtailor.com/locations">
+  <channel>
+    <title>IotaWorks</title>
+    <link>https://careers.iotaworks.example/</link>
+    <description>Jobs at IotaWorks</description>
+    <item>
+      <title>Senior Backend Engineer</title>
+      <link>https://careers.iotaworks.example/jobs/9100001-senior-backend-engineer</link>
+      <guid>c1000000-0000-4000-8000-000000000001</guid>
+      <pubDate>Mon, 07 Sep 2026 15:18:27 +0200</pubDate>
+      <remoteStatus>hybrid</remoteStatus>
+      <description>&lt;p&gt;This is a hybrid role based in Warsaw.&lt;/p&gt;&lt;p&gt;Two days per week in the office is expected.&lt;/p&gt;&lt;p&gt;Strong production experience in Go is required.&lt;/p&gt;&lt;p&gt;This employer participates in E-Verify.&lt;/p&gt;</description>
+      <tt:department>Engineering</tt:department>
+      <tt:role>Backend</tt:role>
+      <tt:city>Warsaw</tt:city>
+      <tt:country>Poland</tt:country>
+      <tt:locations>
+        <tt:location>
+          <tt:name>Warsaw</tt:name>
+          <tt:address>1 Example Street</tt:address>
+          <tt:zip>00-001</tt:zip>
+        </tt:location>
+      </tt:locations>
+    </item>
+    <item>
+      <title>Platform Engineer</title>
+      <link>https://careers.iotaworks.example/jobs/9100002-platform-engineer</link>
+      <guid>c1000000-0000-4000-8000-000000000002</guid>
+      <pubDate>Wed, 02 Sep 2026 09:00:00 +0000</pubDate>
+      <remoteStatus>fully</remoteStatus>
+      <description>&lt;p&gt;Fully remote within the EU.&lt;/p&gt;&lt;p&gt;An office in Warsaw is available and coming in is optional.&lt;/p&gt;&lt;p&gt;You will work with Go and/or Rust.&lt;/p&gt;</description>
+      <tt:department>Engineering</tt:department>
+      <tt:role>Platform</tt:role>
+      <tt:city/>
+      <tt:country>Poland</tt:country>
+    </item>
+    <item>
+      <title><![CDATA[Data Engineer & Analyst]]></title>
+      <link>https://careers.iotaworks.example/jobs/9100003-data-engineer</link>
+      <guid>c1000000-0000-4000-8000-000000000003</guid>
+      <pubDate>Fri, 04 Sep 2026 11:30:00 +0200</pubDate>
+      <remoteStatus>none</remoteStatus>
+      <description>&lt;p&gt;We hire from Poland and Germany.&lt;/p&gt;</description>
+      <tt:department>Data</tt:department>
+      <tt:city>Krakow</tt:city>
+      <tt:country>Poland</tt:country>
+    </item>
+  </channel>
+</rss>

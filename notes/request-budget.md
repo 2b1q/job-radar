@@ -66,7 +66,7 @@ Current timings, and the ceiling:
 | `w3` | 3500 ms | 2500 ms | |
 | `sol` | 3500 ms | 2500 ms | a JSON API with no observed limit, kept at the pace of the other public board rather than at the pace it would tolerate |
 | `hc` | 3500 ms | 2500 ms | a JSON API with no observed limit, kept at the pace of the other public boards |
-| `ats` | 3500 ms | 2500 ms | three hosts rather than one, and a read is one request per company rather than a walk |
+| `ats` | 3500 ms | 2500 ms | seven hosts rather than one, and a read is one request per company rather than a walk |
 
 ### What the two sources added last cost
 
@@ -79,12 +79,29 @@ Reconnaissance cost 21 requests across two sessions — robots, the filter schem
 the parameter tolerance table, the paging edges — with no refusal at any point.
 
 **`ats` — the employer watchlist.** One request per company, and none of the
-three providers pages. So a watchlist of N companies costs exactly N requests,
+seven providers pages. So a watchlist of N companies costs exactly N requests,
 plus N again if the count tool is called first. `pages` is the walk over
 companies and bounds it the same way it bounds a page loop.
 
-Reconnaissance cost 8 requests: three list endpoints, three unknown-slug probes,
-one detail endpoint, one repeat.
+The bytes are not uniform, though the requests are: one provider answered 644 KB
+for 89 postings and 296 KB for 51, because it sends every body in the list
+response and has no paging to ask for less. A long watchlist of large employers
+costs its time there rather than in requests.
+
+Reconnaissance for the first three cost 8 requests: three list endpoints, three
+unknown-slug probes, one detail endpoint, one repeat.
+
+Reconnaissance for the second three cost about 60, on 2026-09-11 — and roughly
+half of that was **hunting for an instance to measure at all**. None of the three
+publishes a directory of the companies on it, so finding one tenant with open
+positions took 30-odd probes of plausible slugs. The measuring is cheap and the
+finding is not — and the finding does not have to be done that way: the method
+that costs one request is in [ats.md](ats.md), "Finding a company's instance
+name", written down precisely because the expensive way was tried first.
+
+Teamtailor, added after that was written, cost **9 requests** using it: two
+robots files, two feeds, two no-redirect checks, one accept-header probe, one
+unknown instance, one repeat. That is the difference the method makes.
 
 ### What `af` now costs, and why it grew
 

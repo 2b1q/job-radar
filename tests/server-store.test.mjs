@@ -16,7 +16,7 @@
 // the defect this repository is careful about.
 
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -289,20 +289,44 @@ test('jobs_stats says which profile is loaded and when it was read', async () =>
   assert.ok(stats.profile.profile, 'and which profile inside it');
 });
 
+test('jobs_stats names the build, and the three version strings agree', async () => {
+  // A version string alone has already covered two different builds: it was
+  // bumped in the working tree and the fix beside it landed two hours later, so
+  // a defect was measured against a "2.2.0" that no longer existed. The mtime is
+  // what tells two builds of one version apart.
+  const res = await client.callTool({ name: 'jobs_stats', arguments: {} });
+  const { build } = JSON.parse(res.content[0].text);
+  assert.match(build.mtime, /^\d{4}-\d{2}-\d{2}T/, 'the file this process was started from');
+
+  // And the release rule, which nothing checked until now: three files carry a
+  // version and a user gets an update only when they agree.
+  const json = (name) => JSON.parse(readFileSync(join(ROOT, name), 'utf8')).version;
+  assert.equal(build.version, json('package.json'));
+  assert.equal(build.version, json('.claude-plugin/plugin.json'));
+});
+
 test('every source the schema declares is one the server can actually dispatch', async () => {
-  // The list is written twice - SOURCE_CODES, which the schema derives from, and
-  // the adapter map the dispatch reads. A code in one but not the other is
-  // silent either way, so every declared source is called.
+  // Schema, dispatch and tool prose all come off the one registry now, but a
+  // code listed there and left out of DRIVERS still reaches the caller as a
+  // TypeError on the far side of a tool call. So every declared source is
+  // called, and every one is described.
   await withServer('server-store-test-sources', { JOBS_PROFILE: 'android' }, async (watcher) => {
     const { tools } = await watcher.listTools();
     const declared = tools.find((t) => t.name === 'jobs_search').inputSchema.properties.source.enum;
     assert.ok(declared.length >= 6, 'the schema names every source');
     for (const source of declared) {
+      for (const tool of tools.filter((t) => t.name.startsWith('jobs_') && t.description.includes('source:'))) {
+        assert.ok(tool.description.includes(`${source} (`), `${tool.name} describes ${source}`);
+      }
       // tm is the one source that refuses a request with no category, which is
       // itself the contract - give it one so this checks dispatch, not that.
       const args = source === 'tm' ? { source, category: '903' } : { source };
       const res = await watcher.callTool({ name: 'jobs_count', arguments: args });
       assert.equal(res.isError, undefined, `${source}: ${res.content[0].text}`);
+      // One name for the total on every board. It was `totalCount` on af and
+      // `found` on the rest, so a client reading either name got `undefined`
+      // from the other and read it as a board with nothing on it.
+      assert.ok('found' in JSON.parse(res.content[0].text), `${source} states found`);
     }
   });
 });

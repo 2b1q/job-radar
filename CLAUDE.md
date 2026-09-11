@@ -25,11 +25,12 @@ Check `package.json` before guessing a command. Run tests only when asked.
 ## The map
 
 ```
-server.mjs        protocol glue only. Adding a board = one line in SOURCES
-params.mjs        query -> board parameters, plus local validation of values the board accepts silently
-adapters/*.mjs    ONE source each: its transport dialect and its parsing. Nothing else
-adapters/_shared/ everything every adapter needs and none of them owns, signals included
-store.mjs         SQLite: seen ids, dup_key, derived employer, statuses, run log, request budget
+server.mjs          protocol glue only. Adding a board = one entry in its DRIVERS table
+params.mjs          query -> board parameters, plus local validation of values the board accepts silently
+adapters/index.mjs  the boards by source code: the one list server.mjs and params.mjs both read
+adapters/*.mjs      ONE source each: its transport dialect and its parsing. Nothing else
+adapters/_shared/   everything every adapter needs and none of them owns, signals included
+store.mjs           SQLite: seen ids, dup_key, derived employer, statuses, run log, request budget
 ```
 
 ## Where the rest of the rules are

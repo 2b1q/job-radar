@@ -1,0 +1,81 @@
+{
+  "_comment": "SYNTHETIC fixture. Not a captured response: the shape is Lever's own - a bare array with no envelope and no total - and the company, ids, urls, salaries and posting text are invented. Four records on purpose: a USD-a-year amount that CAN enter salaryMinUsd, one in another currency that cannot, one in USD on another interval that cannot either, and one with no descriptionPlain at all, which is what textAvailable exists for. `unspecified` in workplaceType is a value this provider really sends. The provider answers a BARE array; `postings` is the unwrapping this file needs to carry the declaration above, and the test hands `list()` the array itself.",
+  "postings": [
+    {
+      "id": "a1000000-0000-4000-8000-000000000001",
+      "text": "Staff Backend Engineer",
+      "createdAt": 1756684800000,
+      "country": "PT",
+      "workplaceType": "hybrid",
+      "categories": {
+        "team": "Platform",
+        "location": "Lisbon, Portugal",
+        "commitment": "Full-time"
+      },
+      "hostedUrl": "https://jobs.lever.co/zetaworks/a1000000-0000-4000-8000-000000000001",
+      "applyUrl": "https://jobs.lever.co/zetaworks/a1000000-0000-4000-8000-000000000001/apply",
+      "salaryRange": {
+        "min": 150000,
+        "max": 185000,
+        "currency": "USD",
+        "interval": "per-year-salary"
+      },
+      "descriptionPlain": "This is a hybrid role based in Lisbon. Two days per week in the office is expected. Strong production experience in Go is required. This employer participates in E-Verify."
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000002",
+      "text": "Senior Platform Engineer",
+      "createdAt": 1756771200000,
+      "country": "DE",
+      "workplaceType": "remote",
+      "categories": {
+        "team": "Platform",
+        "location": "Remote - EU",
+        "commitment": "Full-time"
+      },
+      "hostedUrl": "https://jobs.lever.co/zetaworks/a1000000-0000-4000-8000-000000000002",
+      "applyUrl": "https://jobs.lever.co/zetaworks/a1000000-0000-4000-8000-000000000002/apply",
+      "salaryRange": {
+        "min": 90000,
+        "max": 120000,
+        "currency": "EUR",
+        "interval": "per-year-salary"
+      },
+      "descriptionPlain": "Fully remote. An office in Berlin is available and coming in is optional. You will work with Go and/or Rust."
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000003",
+      "text": "Contract Data Engineer",
+      "createdAt": 1756857600000,
+      "country": "US",
+      "workplaceType": "onsite",
+      "categories": {
+        "team": "Data",
+        "location": "Austin, TX",
+        "commitment": "Contract"
+      },
+      "hostedUrl": "https://jobs.lever.co/zetaworks/a1000000-0000-4000-8000-000000000003",
+      "applyUrl": "https://jobs.lever.co/zetaworks/a1000000-0000-4000-8000-000000000003/apply",
+      "salaryRange": {
+        "min": 14000,
+        "max": 16000,
+        "currency": "USD",
+        "interval": "per-month-salary"
+      },
+      "descriptionPlain": "We hire from Texas and remote within the United States."
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000004",
+      "text": "Engineering Manager",
+      "createdAt": 1756944000000,
+      "country": "GB",
+      "workplaceType": "unspecified",
+      "categories": {
+        "team": "Engineering",
+        "location": "London, UK"
+      },
+      "hostedUrl": "https://jobs.lever.co/zetaworks/a1000000-0000-4000-8000-000000000004",
+      "applyUrl": "https://jobs.lever.co/zetaworks/a1000000-0000-4000-8000-000000000004/apply"
+    }
+  ]
+}
