@@ -113,3 +113,15 @@ The hidden tags include `typescript` and `node` - precisely what a language
 filter would look for. It costs nothing here, because this board is queried
 through `/{tag}-jobs`, and that runs against the full tag list; it would cost
 everything to a filter written against the rows.
+
+## `since` does not reach this board
+
+The board has no date filter, and a tag page is not ordered by recency. `skills: backend`
+under `since: week`, read 2026-09-13: 25 records dated 2026-04-09 to 2026-06-24, none newer.
+A second read the same day answered 15 records, the oldest 2026-08-22. The answer now says
+`sinceApplied: false` rather than echoing `since` as if it had been applied; the dates are
+on every record for whoever needs the cut.
+
+On the same 25, **8 titles named a language the profile excludes, but not next to the role
+word** - `Java Backend Engineer – ...`, `Backend Developer (Java)`, `Senior Backend Engineer,
+Rust`. A title pattern anchored on `<language> engineer` passed all eight.

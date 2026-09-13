@@ -229,8 +229,8 @@ test('and the answer adds up', async () => {
       arguments: { source: 'af', pages: 1, query: 'mixed', onlyNew: true, showFiltered: true },
     });
     const out = JSON.parse(res.content[0].text);
-    const dropped = (out.titleFiltered ?? 0) + (out.collapsed ?? 0)
-      + (out.skipped?.seen ?? 0) + (out.skipped?.merged?.length ?? 0);
+    const dropped = (out.titleFiltered ?? 0) + (out.countryFiltered ?? 0) + (out.collapsed ?? 0)
+      + (out.skipped?.seen ?? 0) + (out.skipped?.merged?.length ?? 0) + (out.heldBack ?? 0);
     assert.equal(out.collected - dropped, out.returned,
                  `collected ${out.collected} minus ${dropped} dropped should be returned ${out.returned}`);
     assert.equal(out.returned, out.jobs.length);
@@ -345,4 +345,65 @@ test('and a watchlist posting nobody has stored keeps its note in the store', as
     assert.ok(noted.length, 'a signal raised at collection is kept, not recomputed later');
     assert.match(noted[0].note, /onsite: "/);
   });
+});
+
+test('a country the profile does not allow is cut, counted, and a relocation offer overrides it', async () => {
+  // A global remote board is mostly remote inside one country. ww and unk are the
+  // board saying it does not know, so they stay; so does free text nobody can judge.
+  await withServer('server-store-test-countries', { JOBS_PROFILE: 'frontend-wallets' }, async (c) => {
+    const res = await c.callTool({
+      name: 'jobs_search',
+      arguments: { source: 'af', query: 'countries', dryRun: true, onlyNew: false, showFiltered: true },
+    });
+    const out = JSON.parse(res.content[0].text);
+    assert.equal(out.collected, 6);
+    assert.equal(out.countryFiltered, 2);
+    assert.deepEqual(out.filteredCountries.map((f) => f.country).sort(), ['deu', 'usa'],
+                     'a denied relocation offer does not save a posting');
+    assert.equal(out.countryKeptBySignal, 1, 'an asserted one does');
+    assert.deepEqual(out.jobs.map((j) => j.country).sort(), ['gbr', 'prt', 'unk', 'ww']);
+
+    const prose = await c.callTool({ name: 'jobs_search', arguments: { source: 'sol', skills: 'react', dryRun: true } });
+    const sol = JSON.parse(prose.content[0].text);
+    assert.equal(sol.countryFiltered, 0, 'free-text locations are not judged');
+    assert.equal(sol.countryUnread, sol.collected);
+  });
+});
+
+test('a limited answer holds the rest back unrecorded, and the next call returns them', async () => {
+  // Truncating after the store write would record postings nobody was shown.
+  await withServer('server-store-test-limit', { JOBS_PROFILE: 'frontend-wallets' }, async (c) => {
+    const call = async () => JSON.parse((await c.callTool({
+      name: 'jobs_search', arguments: { source: 'af', query: 'countries', limit: 3 },
+    })).content[0].text);
+    const first = await call();
+    assert.equal(first.returned, 3);
+    assert.equal(first.truncated, true);
+    assert.equal(first.heldBack, 1);
+    assert.equal(rows("SELECT id FROM jobs WHERE company LIKE 'CountryCo%'").length, 3);
+
+    const second = await call();
+    assert.equal(second.returned, 1, 'the held-back posting was never marked seen');
+    assert.equal(second.truncated, false);
+    assert.equal(second.heldBack, undefined);
+  });
+});
+
+test('records are compact unless full is asked for, and applyAtEmployer is never dropped', async () => {
+  const compact = await search({ source: 'w3', skills: 'node', pages: 1, dryRun: true });
+  const full = await search({ source: 'w3', skills: 'node', pages: 1, dryRun: true, full: true });
+  assert.equal(full.jobs[0].locationVerified, false);
+  assert.equal('locationVerified' in compact.jobs[0], false);
+  for (const j of compact.jobs) {
+    assert.equal(j.applyAtEmployer, false, 'false is a claim on this field');
+    for (const [key, value] of Object.entries(j)) {
+      assert.ok(value !== null && value !== '' && !(Array.isArray(value) && !value.length), `${key} is empty`);
+    }
+  }
+});
+
+test('the answer says whether since reached the results', async () => {
+  // A tag page on w3 served months-old postings under since=week.
+  assert.equal((await search({ source: 'w3', skills: 'node', pages: 1, dryRun: true })).sinceApplied, false);
+  assert.equal((await search({ source: 'af', pages: 1, dryRun: true })).sinceApplied, true);
 });

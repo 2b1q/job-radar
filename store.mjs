@@ -405,10 +405,13 @@ const employerUrl = (job) => (job.applyAtEmployer === true && job.url ? job.url 
 // had ever happened. `seen` is this board offering the same id again, `merged`
 // is another board's copy of a posting already stored, and the two say very
 // different things about a run.
-export function filterFresh(jobs) {
+export function filterFresh(jobs, limit = Infinity) {
   const fresh = [];
   const skipped = { seen: 0, merged: [] };
-  for (const incoming of jobs) {
+  for (const [index, incoming] of jobs.entries()) {
+    // Stops before reading the rest rather than after: a posting recorded as seen
+    // and never returned would never come back as new either.
+    if (fresh.length >= limit) { fresh.heldBack = jobs.length - index; break; }
     if (hasSeen.get(incoming.id)) { skipped.seen += 1; continue; }
     // An unnamed employer is looked up in the store before the key is built:
     // company + title is the key, so a name recovered here is what lets the two

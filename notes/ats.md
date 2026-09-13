@@ -77,6 +77,14 @@ rows stored before the column existed are in [dedup.md](dedup.md).
 | salary | not in this payload | `compensation.compensationTierSummary` | not in this payload |
 | skills or tags | none | none | none |
 | unknown company | **404** | **404** | **302** to its marketing site |
+| open positions: none | not seen | **200** `{"jobs":[],"apiVersion":...}`, 2026-09-13 | not seen |
+
+**On Ashby, a company with nothing open and a company that does not exist answer
+differently**, and that is the whole test for a watchlist entry that returned zero: 200
+with an empty `jobs` list is a live instance, 404 is a wrong slug. Measured with one live
+instance at zero and one invented slug. It does not settle the third case: a board a
+company left for another provider was seen answering 200 with postings whose pages were
+gone - so 200 says the instance exists, not that it is the one the company uses.
 
 Three consequences, in the order they bite:
 

@@ -41,6 +41,25 @@ const afMixed = [
   createdAtIso: '2026-09-09T00:00:00.000Z',
 }));
 
+// Filed under the lower-case alpha-3 codes this board writes. Two carry the same
+// relocation phrase, one asserting it and one denying it.
+const afCountries = [
+  { id: 26300001, country: 'usa', title: 'Backend Engineer, Payments' },
+  { id: 26300002, country: 'ww', title: 'Backend Engineer, Ledger' },
+  { id: 26300003, country: 'unk', title: 'Backend Engineer, Wallets' },
+  { id: 26300004, country: 'prt', title: 'Backend Engineer, Custody' },
+  { id: 26300005, country: 'gbr', title: 'Backend Engineer, Settlement',
+    description: 'We offer a relocation package.' },
+  { id: 26300006, country: 'deu', title: 'Backend Engineer, Risk',
+    description: 'There is no relocation package for this role.' },
+].map((j) => ({
+  ...j,
+  companyName: `CountryCo ${j.id}`,
+  url: token(`https://jobs.ashbyhq.com/x/${j.id}`),
+  format: 'remote', salaryLabel: 'not stated', salaryMinUsd: null,
+  createdAtIso: '2026-09-09T00:00:00.000Z',
+}));
+
 const afJobs = (n) => Array.from({ length: n }, (_, i) => ({
   id: 26100000 + i,
   companyName: `StubCo ${i}`,
@@ -82,12 +101,15 @@ const hcPage = () => {
 // The employer watchlist. The Greenhouse instance carries the same posting the
 // other two boards already published, under the employer's own link - which is
 // the case the store has to say something about rather than merge in silence.
-const ghTwin = JSON.stringify({
+// Dated yesterday at serve time: a fixed date aged out of the default `since`
+// and turned both watchlist tests red a week after they were written.
+const yesterday = () => new Date(Date.now() - 86400e3).toISOString();
+const ghTwin = () => JSON.stringify({
   jobs: [{
     id: 7000500, title: TWIN.title, company_name: TWIN.company,
     absolute_url: 'https://job-boards.greenhouse.io/twinco/jobs/7000500',
     location: { name: 'Remote' }, offices: [], departments: [],
-    first_published: '2026-09-04T00:00:00-04:00', updated_at: '2026-09-04T00:00:00-04:00',
+    first_published: yesterday(), updated_at: yesterday(),
     content: '&lt;p&gt;This is a hybrid role.&lt;/p&gt;',
   }],
   meta: { total: 1 },
@@ -97,8 +119,12 @@ globalThis.fetch = async (input, init = {}) => {
   const url = String(input);
   if (url.includes('web3.career')) return reply(url, read('w3-listing.html'));
   if (url.includes('career.habr.com')) return reply(url, hcPage());
-  if (url.includes('greenhouse.io')) return reply(url, ghTwin);
-  if (url.includes('ashbyhq.com')) return reply(url, read('ats-ashby.json'));
+  if (url.includes('greenhouse.io')) return reply(url, ghTwin());
+  if (url.includes('ashbyhq.com')) {
+    const board = JSON.parse(read('ats-ashby.json'));
+    for (const job of board.jobs) job.publishedAt = yesterday();
+    return reply(url, JSON.stringify(board));
+  }
   if (url.includes('bamboohr.com')) return reply(url, read('ats-bamboohr.json'));
   if (url.includes('api.getro.com')) {
     // jobs.solana.com pages from zero and reports its own total; page 1 is past
@@ -117,12 +143,14 @@ globalThis.fetch = async (input, init = {}) => {
     const { filters, pagination } = JSON.parse(init.body || '{}');
     const data = filters?.searchQuery === 'twin' ? [afTwin]
       : filters?.searchQuery === 'mixed' ? afMixed
-        : afJobs(2);
+        : filters?.searchQuery === 'countries' ? afCountries
+          : afJobs(2);
     return reply(url, JSON.stringify({ data, hasMore: (pagination?.page || 1) < 1 }));
   }
   if (url.includes('/api/jobs/count')) {
     const { filters } = JSON.parse(init.body || '{}');
-    return reply(url, JSON.stringify({ totalCount: filters?.searchQuery === 'mixed' ? afMixed.length : 2 }));
+    const sets = { mixed: afMixed, countries: afCountries };
+    return reply(url, JSON.stringify({ totalCount: sets[filters?.searchQuery]?.length ?? 2 }));
   }
   throw new Error(`stub-boards: nothing is stubbed for ${url}`);
 };

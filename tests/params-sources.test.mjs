@@ -115,3 +115,21 @@ test('a query of nothing but spaces is no query, not an empty one', async () => 
   assert.equal('searchQuery' in afFilters({ query: '   ' }), false);
   assert.equal('searchQuery' in afFilters({}), false);
 });
+
+test('the country allowlist adds the relocation list and the board own unstated values', async () => {
+  const { countryFilter } = await load('countries');
+  const filter = countryFilter();
+  assert.deepEqual([...filter.allow].sort(), ['prt', 'rus', 'unk', 'ww']);
+  assert.deepEqual([...filter.signals], ['relocationOffered']);
+  assert.equal(filter.isCode('usa'), true);
+  assert.equal(filter.isCode('ww'), true);
+  // Free text is not a country anybody checked, so it is never judged.
+  for (const prose of ['United States', 'Remote', 'RS', null]) assert.equal(filter.isCode(prose), false, prose);
+});
+
+test('no countryAllow is no country cut, and a name instead of a code is refused', async () => {
+  const { countryFilter } = await load('watcher');
+  assert.equal(countryFilter(), null);
+  const bad = await load('badcountry');
+  assert.throws(() => bad.countryFilter(), /"Germany", which is not an ISO-3166 alpha-3 code/);
+});

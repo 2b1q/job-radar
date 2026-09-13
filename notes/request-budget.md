@@ -138,3 +138,10 @@ rows and no visible result. Fewer pages per call, or a longer client timeout.
 and enrichment it makes. Hitting it **throws**: a call that returns what it
 managed to collect looks like an answer, and a short answer that looks whole is
 how "the niche is empty" gets read off a run that simply stopped.
+
+### What the country filter and answer limit cost to verify
+
+10 requests, 2026-09-13. `af` five pages and a count (6) and `w3` one page (1), both
+`dryRun` against a copy of the store; and 3 to one watchlist employer on Ashby that had
+answered zero postings - its board API, a made-up slug for comparison, and the careers
+page. What they showed is in `notes/ats.md`.

@@ -544,6 +544,50 @@ export function titleFilter() {
   };
 }
 
+// What a board writes when it names no single country; never a reason to drop.
+const COUNTRY_UNSTATED = ['ww', 'unk'];
+const COUNTRY_CODE = /^[a-z]{3}$/;
+
+/** A profile list of lower-case ISO-3166 alpha-3 codes, checked entry by entry. */
+function countryCodes(value, key) {
+  if (!Array.isArray(value)) {
+    throw new Error(`${PROFILE.source}: ${key} must be a list of ISO-3166 alpha-3 codes, e.g. ["deu"]`);
+  }
+  return value.map((code) => {
+    const normal = String(code).trim().toLowerCase();
+    if (!COUNTRY_CODE.test(normal)) {
+      throw new Error(`${PROFILE.source}: ${key} holds ${JSON.stringify(code)}, which is not `
+        + 'an ISO-3166 alpha-3 code - a value nobody matches would drop every posting it was meant to keep');
+    }
+    return normal;
+  });
+}
+
+/**
+ * The countries a posting may be in, or null when the profile asks for no cut.
+ *
+ * Only a record whose country is a code can be judged: free-text locations are
+ * kept and counted, because a place written as prose is not a country anybody
+ * checked. `relocationCountries` is always allowed, and so is a posting raising
+ * one of `countryAllowSignals` affirmatively - an offer to move somebody beats
+ * the country the board filed it under.
+ */
+export function countryFilter() {
+  refresh();
+  if (PROFILE.countryAllow === undefined || PROFILE.countryAllow === null) return null;
+  const signals = PROFILE.countryAllowSignals ?? [];
+  if (!Array.isArray(signals) || signals.some((s) => typeof s !== 'string' || !s.trim())) {
+    throw new Error(`${PROFILE.source}: countryAllowSignals must be a list of signal names `
+      + 'from signals.phrases, e.g. ["relocationOffered"]');
+  }
+  return {
+    allow: new Set([...COUNTRY_UNSTATED, ...RELOCATION_COUNTRIES.map((c) => String(c).toLowerCase()),
+                    ...countryCodes(PROFILE.countryAllow, 'countryAllow')]),
+    signals: new Set(signals.map((s) => s.trim())),
+    isCode: (country) => COUNTRY_CODE.test(String(country ?? '')) || COUNTRY_UNSTATED.includes(country),
+  };
+}
+
 /** The oldest date a `since` admits, as `YYYY-MM-DD`, or null for no cut. */
 export function sinceCutoff(since) {
   const days = SINCE_DAYS[since];

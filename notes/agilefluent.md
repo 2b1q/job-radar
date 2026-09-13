@@ -302,3 +302,22 @@ Measured on one page of 50 under `countries_workplaces: [{workplaces:
 ['remote']}]`, `since: month`: **48 remote and 2 hybrid**. The board's own
 workplace filter admits hybrid postings, so `format` is worth reading even when
 the preset says remote. Not corrected here — the field is what the board said.
+
+## `preset: remote` is mostly one country, and nothing on the board says so
+
+`preset: remote`, `since: week`, `query: node.js`, five pages, measured 2026-09-13:
+found 526, collected 250. Of the 152 records left after the title filter, **28 (18%)**
+were filed under `ww`, `unk` or a country the profile allowed; the largest of the rest were
+`usa` 28, `gbr` 14, `ind` 12, `bra` 12. The same run was 93,266 bytes of JSON, which the
+client refused as one tool answer.
+
+`country` here is a lower-case ISO-3166 alpha-3 code, or `ww` / `unk` when the board names
+no single country. It is the only source that writes a code, which is why the profile's
+`countryAllow` judges codes only and counts the rest as `countryUnread`. What the other
+sources write instead is measured in `notes/country.md`.
+
+Re-run the same day with `countryAllow` and the widened title filter, `dryRun`: collected
+250, `titleFiltered` 69, `countryFiltered` 136, `countryKeptBySignal` 2, `collapsed` 13,
+**returned 32** - `ww` 22, `unk` 6, 3 under an allowed code, and one `usa` kept by an
+affirmed relocation phrase. 30,577 bytes with compact records. `locationVerified` is still false: the cut is as
+good as the board's field and no better.

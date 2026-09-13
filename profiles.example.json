@@ -67,6 +67,16 @@
     "                      titleFiltered counts it and showFiltered=true hands",
     "                      the titles back. A list a person reads and edits in a",
     "                      minute, which is why it is here and not in the code",
+    "countryAllow          ISO-3166 alpha-3 codes a posting may be in, on top of",
+    "countryAllowSignals   relocationCountries and the board's own ww and unk,",
+    "                      which are never dropped. Absent means no country cut.",
+    "                      Only a record whose country IS a code is judged -",
+    "                      AgileFluent states one, the other sources write free",
+    "                      text, which is kept and counted as countryUnread.",
+    "                      countryAllowSignals names signals.phrases entries",
+    "                      that keep a posting wherever it is filed, when its",
+    "                      text asserts them rather than denies them. Counted as",
+    "                      countryFiltered; showFiltered=true lists the drops",
     "watchlist             the employers the `ats` source follows: one entry per",
     "                      company instance, `provider` one of greenhouse, ashby,",
     "                      bamboohr, lever, workable, teamtailor, recruitee, and",
@@ -215,6 +225,65 @@
         ]
       }
     },
+    "backend-node": {
+      "_comment": "A backend individual-contributor search on Node.js. titleExclude is the part worth reading: the last pattern drops a title naming another backend language ANYWHERE in it - `Backend Developer (Java)` as well as `Java Backend Engineer` - unless the same title also names Node, TypeScript or JavaScript. Leadership titles are dropped on purpose; remove `manager` or `head of` to see them.",
+      "roles": [],
+      "grades": [],
+      "relocationCountries": [
+        "pol",
+        "cze"
+      ],
+      "skills": {
+        "w3": [
+          "node",
+          "backend"
+        ],
+        "hc": [
+          "12"
+        ]
+      },
+      "categories": {},
+      "tagGroups": {},
+      "signals": {
+        "phrases": {
+          "relocationOffered": [
+            "relocation package",
+            "relocation support",
+            "visa sponsorship"
+          ],
+          "usWorkAuthorization": [
+            "This employer participates in E-Verify",
+            "authorized to work in the United States"
+          ]
+        },
+        "onsite": true,
+        "languages": [
+          "Go",
+          "Golang",
+          "Rust",
+          "Java",
+          "Kotlin",
+          "Scala",
+          "C#",
+          "PHP",
+          "Ruby"
+        ]
+      },
+      "countryAllow": [],
+      "countryAllowSignals": [
+        "relocationOffered"
+      ],
+      "titleExclude": [
+        "\\b(sales|account executive|account manager|business development|partnerships?|marketing|growth|content|recruit|talent|people|hr)\\b",
+        "\\b(compliance|legal|counsel|lawyer|finance|accountant|controller|treasury|underwrit|payroll|tax|expenses|credit risk)\\b",
+        "\\b(support|customer success|solutions? engineer|solutions? architect|forward deployed|onboarding|operations|ops)\\b",
+        "\\b(designer|manager|product owner|scrum|analyst)\\b",
+        "\\b(frontend|front-end|front end|mobile|ios|android|react native|flutter|unity|game)\\b",
+        "\\b(devops|site reliability|security|secops|infrastructure engineer|platform engineer|qa|quality|test automation)\\b",
+        "\\b(intern|internship|accelerator program|junior|head of|director|vp|vice president|chief|cto|ceo|coo)\\b",
+        "^(?!.*\\b(node(\\.?js)?|typescript|javascript)\\b).*((?<![\\w.#+])(rust|golang|java|kotlin|scala|c\\+\\+|c#|php|ruby|python)(?![\\w#+])|\\.net\\b)"
+      ]
+    },
     "frontend-wallets": {
       "_comment": "Why this set of sources has two crypto boards: they are addressed by tag page and free text, not by an industry search. Every value below was sent to its board before it was written down.",
       "roles": [],
@@ -264,9 +333,19 @@
         }
       ],
       "signals": {
+        "phrases": {
+          "relocationOffered": [
+            "relocation package",
+            "visa sponsorship"
+          ]
+        },
         "onsite": true,
         "languages": []
       },
+      "countryAllow": [],
+      "countryAllowSignals": [
+        "relocationOffered"
+      ],
       "titleExclude": [
         "\\b(sales|account executive|business development|marketing|recruit)",
         "\\b(compliance|legal|finance|accountant)\\b",

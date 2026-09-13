@@ -26,11 +26,12 @@ const { McpServer, StdioServerTransport, z } = await Promise.all([
 import { statSync } from 'node:fs';
 
 import { ADAPTERS as SOURCES, SOURCE_CODES } from './adapters/index.mjs';
+import { AFFIRMED } from './adapters/_shared/signals.mjs';
 import * as store from './store.mjs';
 // Dynamic, so a missing or broken profile reaches the operator as one line
 // rather than as a module-loading stack trace on a transport nobody is reading
 // yet.
-const { CATEGORIES, afFilters, hcParams, profileStatus, resolveTags,
+const { CATEGORIES, afFilters, countryFilter, hcParams, profileStatus, resolveTags,
         signalConfig, sinceCutoff, solParams, titleFilter, tmParams, w3Tag,
         watchlist } = await import('./params.mjs')
   .catch((err) => {
@@ -55,7 +56,7 @@ const loadedAt = (file) => {
  * already covered two different servers, and `profileStatus` reports an mtime
  * beside a name for the same reason.
  */
-const BUILD = { version: '2.3.0', mtime: loadedAt(import.meta.filename) };
+const BUILD = { version: '2.4.0', mtime: loadedAt(import.meta.filename) };
 
 // The server name is the project; the tool names are not - see CLAUDE.md.
 const server = new McpServer({ name: 'job-radar', version: BUILD.version });
@@ -67,8 +68,9 @@ const sinceSchema = z.enum(['24h', '3d', 'week', '2w', 'month']);
 /**
  * One entry per board: how to count it, how to search it, and the paragraph the
  * tool descriptions print about it. Every `count` states `found`, so a client
- * reading that name gets it from all six. A `search` that needs more than one
- * call is a function further down.
+ * reading that name gets it from all six. `sinceApplied` says whether a search
+ * honours `since`, which the answer repeats either way. A `search` that needs
+ * more than one call is a function further down.
  */
 const DRIVERS = {
   af: {
@@ -85,6 +87,7 @@ const DRIVERS = {
       + 'queries are sent as given - but they narrow very sharply and often to zero (two words '
       + 'survive only where they genuinely sit together in a posting, three words usually return '
       + 'nothing), so start with one word and add another only if the count allows.',
+    sinceApplied: true,
     count: async ({ preset, since, query }) => {
       const total = await agilefluent.count(afFilters({ preset, since, query }));
       return { preset, since, found: total, totalCount: total };
@@ -97,6 +100,8 @@ const DRIVERS = {
     countHelp: 'REQUIRES a category taxonomy id - the board answers HTTP 400 without one, and query is '
       + 'not sent to this board at all, so it is refused here rather than dropped. It also takes '
       + 'skills (slugs from search-skills, comma separated or an array).',
+    searchHelp: 'filters by date instead of since - since is not applied there.',
+    sinceApplied: false,
     count: ({ preset, category, skills, date, query }) =>
       talentmove.count(tmRequest({ preset, category, skills, date, query })),
     search: tmSearch,
@@ -107,7 +112,9 @@ const DRIVERS = {
     label: 'web3.career',
     countHelp: 'ignores presets: it is addressed by tag page, so pass the tag slug as skills. The slugs '
       + 'belong to this board alone; the profile keeps them under skills.w3.',
-    searchHelp: 'addressed by tag page - pass the tag slug as skills, which belong to this board alone.',
+    searchHelp: 'addressed by tag page - pass the tag slug as skills, which belong to this board alone. It '
+      + 'has no date filter, so since is not applied there, and a tag page can list postings months old.',
+    sinceApplied: false,
     count: ({ skills }) => web3career.count({ tag: w3Tag(skills) }),
     search: ({ skills, pages }) => web3career.search({ tag: w3Tag(skills) }, pages),
   },
@@ -117,6 +124,7 @@ const DRIVERS = {
       + 'remote preset.',
     searchHelp: 'one free-text term as query or the first skills entry; it has no date filter, so since '
       + 'is not applied there.',
+    sinceApplied: false,
     // The same one-term rule as a search, and the same duty to say which words
     // were not part of the question.
     count: async ({ preset, skills }) => {
@@ -139,6 +147,7 @@ const DRIVERS = {
       + 'id up with /api/frontend/suggestions/skills?term=<word>, which returns value as the id, '
       + 'and keep it under skills.hc. query is full text over the whole posting rather than over '
       + 'its stack: a hit need not carry the term in skills at all.',
+    sinceApplied: false,
     count: async ({ preset, query, skills }) =>
       ({ preset, ...(await habrcareer.count(hcParams({ preset, query, skills }))) }),
     search: ({ preset, query, skills, pages }) =>
@@ -159,6 +168,7 @@ const DRIVERS = {
       + 'that answered. since IS applied here, locally, on the dates two of the three providers '
       + 'publish - dateFiltered says how many that dropped and undated how many carried no date '
       + 'and were kept.',
+    sinceApplied: true,
     count: async () => {
       const { employers, window } = atsWindow(10);
       const counted = await ats.count({ watchlist: window }, window.length);
@@ -280,8 +290,8 @@ async function tmSearch({ preset, category, skills, date, query, requireTags, pa
 
 // What `jobs_search` states itself. Every other property of the array travels:
 // an allowlist here dropped a new adapter's caveat unasked.
-const ENVELOPE = ['source', 'preset', 'since', 'found', 'collected', 'returned',
-                  'sortedBy', 'onlyNew', 'dryRun', 'jobs'];
+const ENVELOPE = ['source', 'preset', 'since', 'sinceApplied', 'found', 'collected', 'returned',
+                  'truncated', 'heldBack', 'sortedBy', 'onlyNew', 'dryRun', 'jobs'];
 
 /**
  * Carry an array's own caveats onto a filtered copy - and nothing else.
@@ -328,8 +338,7 @@ function collapseTwins(jobs) {
  * board with nothing to offer, which is the failure this repository is built
  * around.
  */
-function filterTitles(jobs, showFiltered) {
-  const { exclude, include } = titleFilter();
+function filterTitles(jobs, { exclude, include }, showFiltered) {
   if (!exclude.length && !include.length) return jobs;
   const dropped = [];
   const kept = jobs.filter((job) => {
@@ -342,6 +351,52 @@ function filterTitles(jobs, showFiltered) {
   kept.titleFiltered = dropped.length;
   if (showFiltered && dropped.length) kept.filteredTitles = dropped;
   return kept;
+}
+
+/**
+ * The profile's country allowlist, over every record whose country is a code.
+ *
+ * Counted like the title filter, and for the same reason. A free-text location
+ * is kept and counted as `countryUnread`: it cannot be judged without guessing.
+ */
+function filterCountries(jobs, filter, showFiltered) {
+  if (!filter) return jobs;
+  const dropped = [];
+  let unread = 0;
+  let bySignal = 0;
+  const kept = jobs.filter((job) => {
+    if (!filter.isCode(job.country)) { unread += 1; return true; }
+    if (filter.allow.has(job.country)) return true;
+    if ((job.signals || []).some((s) => filter.signals.has(s.name) && s.polarity === AFFIRMED)) {
+      bySignal += 1;
+      return true;
+    }
+    dropped.push({ title: job.title, country: job.country });
+    return false;
+  });
+  carryMeta(kept, jobs);
+  kept.countryFiltered = dropped.length;
+  if (unread) kept.countryUnread = unread;
+  if (bySignal) kept.countryKeptBySignal = bySignal;
+  if (showFiltered && dropped.length) kept.filteredCountries = dropped;
+  return kept;
+}
+
+// `false` is a claim on this field alone; on the others it is a board's default.
+const FALSE_IS_A_CLAIM = new Set(['applyAtEmployer']);
+
+/** A record without the fields that say nothing about it: null, empty, and default false. */
+function compact(job) {
+  return Object.fromEntries(Object.entries(job).filter(([key, value]) =>
+    value !== null && value !== undefined && value !== ''
+    && !(Array.isArray(value) && !value.length)
+    && (value !== false || FALSE_IS_A_CLAIM.has(key))));
+}
+
+/** A sliced answer, carrying how many it left out - the shape `filterFresh` returns. */
+function withheld(jobs, heldBack) {
+  if (heldBack > 0) jobs.heldBack = heldBack;
+  return jobs;
 }
 
 // The watchlist is configuration, and an empty one is the silent-zero shape this
@@ -462,8 +517,18 @@ server.registerTool(
       + 'titleInclude in the profile are regular expressions applied to every source after '
       + 'collection, for the boards that cannot filter by role without discarding most of '
       + 'themselves; titleFiltered says how many they dropped and showFiltered=true returns the '
-      + 'titles. locationVerified is false everywhere: the location and work mode are what the '
-      + 'source states, and three of them have been measured wrong.',
+      + 'titles. countryAllow in the profile keeps only records whose country code is in it, in '
+      + 'relocationCountries, or ww/unk; countryAllowSignals names signals that keep a record '
+      + 'whatever its country. Only a code can be judged - af states one, the other sources write '
+      + 'free text, which is kept and counted as countryUnread. countryFiltered says how many were '
+      + 'dropped, countryKeptBySignal how many a signal saved, and showFiltered=true lists them. '
+      + 'locationVerified is false everywhere: the location and work mode are what the '
+      + 'source states, and three of them have been measured wrong, so the country cut is only as '
+      + 'good as the board field. sinceApplied=false means the source ignored since and the dates '
+      + 'are whatever it returned. At most limit jobs are returned (default 40); truncated=true '
+      + 'with heldBack means the rest were NOT recorded as seen and the same call returns them next. '
+      + 'Jobs are compact by default - null, empty and default-false fields are left out, while '
+      + 'applyAtEmployer is always present - and full=true returns every field.',
     inputSchema: {
       source: sourceSchema.optional(),
       preset: presetSchema.optional(),
@@ -481,18 +546,26 @@ server.registerTool(
       onlyNew: z.boolean().optional(),
       dryRun: z.boolean().optional(),
       showFiltered: z.boolean().optional(),
+      // A one-word week on af was measured past what a client accepts as one answer.
+      limit: z.number().int().min(1).max(200).optional(),
+      full: z.boolean().optional(),
     },
   },
-  async ({ source = 'af', preset = 'remote', since = 'week', query, category, skills, requireTags, date, minSalary, pages = 5, onlyNew = true, dryRun = false, showFiltered = false }) => {
+  async ({ source = 'af', preset = 'remote', since = 'week', query, category, skills, requireTags, date, minSalary, pages = 5, onlyNew = true, dryRun = false, showFiltered = false, limit = 40, full = false }) => {
     // Requests are counted around the call rather than reported by it: how many
     // pages a board needed is the adapter's business, and the delta is what a
     // run actually spent.
+    // Read before the first request: a broken pattern or country code in the
+    // profile should cost nothing, not a board read followed by an error.
+    const titles = titleFilter();
+    const countries = countryFilter();
     const board = SOURCES[source];
     const before = board.requestCount();
     board.beginCall(`jobs_search on ${source}`);
     const all = await DRIVERS[source].search(
       { preset, since, query, category, skills, requireTags, date, minSalary, pages });
-    const collected = collapseTwins(filterTitles(all, showFiltered));
+    const collected = collapseTwins(
+      filterCountries(filterTitles(all, titles, showFiltered), countries, showFiltered));
     const requests = board.requestCount() - before;
     board.endCall();
     // Checked before anything is written: `filterFresh` marks what it stores as
@@ -515,7 +588,7 @@ server.registerTool(
     // Not filtering to the new ones means the answer will contain postings the
     // store already knows something about. Saying nothing about them is how a
     // vacancy already marked `skip` came back looking untouched.
-    const jobs = onlyNew && !dryRun ? store.filterFresh(collected) : store.marksFor(collected);
+    const jobs = onlyNew && !dryRun ? store.filterFresh(collected, limit) : withheld(store.marksFor(collected.slice(0, limit)), collected.length - limit);
     if (!dryRun) store.logRun(source, preset, since, collected.length, jobs.length, requests);
 
     // An adapter hangs its caveats on the array it returns, and JSON.stringify
@@ -531,9 +604,11 @@ server.registerTool(
     // adapter is actually adding.
     if (jobs.skipped) meta.skipped = jobs.skipped;
 
-    return json({ source, preset, since,
+    const heldBack = jobs.heldBack ?? 0;
+    return json({ source, preset, since, sinceApplied: DRIVERS[source].sinceApplied,
                   found: all.found ?? all.length, collected: all.length,
-                  returned: jobs.length, sortedBy, onlyNew, dryRun, ...meta, jobs });
+                  returned: jobs.length, truncated: heldBack > 0, ...(heldBack ? { heldBack } : {}),
+                  sortedBy, onlyNew, dryRun, ...meta, jobs: full ? jobs : jobs.map(compact) });
   }
 );
 

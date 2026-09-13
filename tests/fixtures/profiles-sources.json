@@ -54,6 +54,16 @@
     "badlanguages": {
       "roles": ["Backend Engineer"],
       "signals": { "languages": "Go" }
+    },
+    "countries": {
+      "roles": [],
+      "relocationCountries": ["PRT"],
+      "countryAllow": ["rus"],
+      "countryAllowSignals": ["relocationOffered"]
+    },
+    "badcountry": {
+      "roles": [],
+      "countryAllow": ["Germany"]
     }
   }
 }
