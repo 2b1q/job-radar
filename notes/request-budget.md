@@ -91,7 +91,7 @@ costs its time there rather than in requests.
 Reconnaissance for the first three cost 8 requests: three list endpoints, three
 unknown-slug probes, one detail endpoint, one repeat.
 
-Reconnaissance for the second three cost about 60, on 2026-09-11 — and roughly
+Reconnaissance for the second three cost about 60 — and roughly
 half of that was **hunting for an instance to measure at all**. None of the three
 publishes a directory of the companies on it, so finding one tenant with open
 positions took 30-odd probes of plausible slugs. The measuring is cheap and the
@@ -141,7 +141,15 @@ how "the niche is empty" gets read off a run that simply stopped.
 
 ### What the country filter and answer limit cost to verify
 
-10 requests, 2026-09-13. `af` five pages and a count (6) and `w3` one page (1), both
+10 requests. `af` five pages and a count (6) and `w3` one page (1), both
 `dryRun` against a copy of the store; and 3 to one watchlist employer on Ashby that had
 answered zero postings - its board API, a made-up slug for comparison, and the careers
 page. What they showed is in `notes/ats.md`.
+
+### What re-measuring getmatch.ru cost
+
+57 requests, anonymous `curl` at five seconds apart: `robots.txt`, one read of
+`sitemap.xml` (5.6 MB - the single heaviest response any source here has been asked for),
+15 posting pages to tell live from archived, and 40 more to measure the yield - reusing
+the sitemap already read rather than paying for it twice. No refusal, no challenge.
+Findings in `notes/habrcareer.md`.

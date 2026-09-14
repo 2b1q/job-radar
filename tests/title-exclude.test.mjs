@@ -29,11 +29,32 @@ const LANGUAGE_ANYWHERE = [
   'Senior Backend Engineer (.NET)', 'C++ Engineer',
 ];
 
+// The same classes in Russian. `\b` is ASCII-only in JavaScript, so the English
+// list passed every one of these; they are store titles with employers removed.
+const RUSSIAN = [
+  'Системный аналитик', 'Продуктовый аналитик, B2C', 'Менеджер по развитию бизнеса',
+  'Руководитель web разработки', 'Технический писатель', 'Тренер/преподаватель it-курсов',
+  'Методист-Разработчик', 'Графический дизайнер', 'Специалист по информационной безопасности',
+  'Инженер технической поддержки продукта', 'Партнёр по продажам программного обеспечения',
+  'Разработчик 1С на высоконагруженный продукт', 'Фронтенд разработчик (React)',
+  'Стажер AI-разработчик',
+];
+
+// Go was missing from the language rule in either script, and so was Bitrix.
+const GO_AND_BITRIX = [
+  'Go-разработчик в команду рекламы', 'Senior Backend разработчик Go', 'Senior Backend Engineer (Go)',
+  'Битрикс-разработчик/интегратор', 'Разработчик Bitrix24',
+];
+
 const KEEP = [
   'Senior Backend Engineer', 'Backend Engineer (Node.js)', 'Senior Node.js Engineer',
   'Full Stack Engineer (TypeScript, Node.js)', 'Backend Engineer, JavaScript',
   'Backend Engineer - Python/Node.js', 'Trust & Safety Backend Engineer',
   'Software Engineer, Backend', 'Staff Software Engineer, Payments',
+  'Go-to-market Backend Engineer',
+  'Backend-разработчик (Node.js / NestJS), Middle–Senior', 'Node.js / TypeScript разработчик (Backend)',
+  'Middle Backend-разработчик', 'Backend-разработчик (поддержка и развитие)',
+  'Senior Backend Engineer для финансовой платформы', 'Fullstack-разработчик по Node.js + React',
 ];
 
 test('a role class the backend profile excludes is dropped', () => {
@@ -44,7 +65,15 @@ test('a language is caught wherever it stands in the title', () => {
   assert.deepEqual(LANGUAGE_ANYWHERE.filter((t) => !excluded(t)), []);
 });
 
-test('and a title that also names Node, TypeScript or JavaScript is kept', () => {
+test('a role class written in Russian is dropped too', () => {
+  assert.deepEqual(RUSSIAN.filter((t) => !excluded(t)), []);
+});
+
+test('Go and Bitrix are caught in both scripts, and go-to-market is not Go', () => {
+  assert.deepEqual(GO_AND_BITRIX.filter((t) => !excluded(t)), []);
+});
+
+test('and a backend title is kept, in either script', () => {
   // `JavaScript` must not read as `Java`, and `Trust` must not read as `Rust`.
   assert.deepEqual(KEEP.filter(excluded), []);
 });

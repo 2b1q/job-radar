@@ -7,17 +7,18 @@ that none of the first four sources reaches. They were ranked on one criterion �
 **does a card lead to the employer's own application, or only back to the
 board** — and then on whether their answer is usable at all.
 
-**All three were probed on 2026-09-09**, and the two that were not built are
-written down here with their reason so that the next person spends the afternoon
-on something else. Both reasons are properties of the board rather than of the
-day, but a board can change: re-measure before overturning either, and put the
-new date next to the old one.
+**All three were probed**, and the two that were not built are written down here
+with their reason so that the next person spends the afternoon on something else.
+Both reasons are properties of the board rather than of the day, but a board can
+change: re-measure before overturning either, and write the new measurement next to
+the old one.
 
-| board | measured | reachable | apply link | verdict |
-|---|---|---|---|---|
-| career.habr.com | 2026-09-09 | JSON API, anonymous | its own page, always | **built** |
-| djinni.co | 2026-09-09 | HTML listing, anonymous, 15 cards a page, HTTP 200 with no challenge | its own page, always | **measured, not built** — a second `false`, and markup rather than an API |
-| getmatch.ru | 2026-09-09 | listing rendered client-side; the postings come from `/api/`, which `robots.txt` **disallows** | not reached | **closed** — the only way in is the one we are asked not to take |
+| board | reachable | apply link | verdict |
+|---|---|---|---|
+| career.habr.com | JSON API, anonymous | its own page, always | **built** |
+| djinni.co | HTML listing, anonymous, 15 cards a page, HTTP 200 with no challenge | its own page, always | **measured, not built** — a second `false`, and markup rather than an API |
+| getmatch.ru, first probe | listing rendered client-side; the postings come from `/api/`, which `robots.txt` **disallows** | not reached | **closed** — the only way in is the one we are asked not to take |
+| getmatch.ru, re-measured | posting pages server-rendered and not disallowed; `sitemap.xml` lists them | its own page | **open, not built** — the first verdict was too strong, and 0 backend Node.js postings in 40; see below |
 
 **None of the three satisfies the criterion.** That is the finding, not a
 detail: on the ATS question these boards are all `false`, and the place where a
@@ -41,6 +42,91 @@ its `robots.txt`. There is no anonymous, permitted path to the data. That is a
 decision by the site, not a gap in the reconnaissance, and it changes only if
 their `robots.txt` does.
 
+### getmatch.ru re-measured: a permitted path exists
+
+The paragraph above is right about the listing and the API and wrong in its
+conclusion. `/api/` is still disallowed, but reading a posting never needed it.
+17 requests, `curl`, anonymous:
+
+- **`robots.txt`** disallows 15 paths - `/api/`, `/employer/`, `/profile/`, `/p/`,
+  `/a/` among them - with no `Allow` line. **`/vacancies/` is not one of them**, and
+  it declares `Sitemap: https://getmatch.ru/sitemap.xml`
+- **Category listings are still client-side.** `/vacancies/backend` carries no
+  link shaped `/vacancies/<id>-<slug>`
+- **A posting page is rendered on the server** with the posting in it, and a live
+  one carries a schema.org `JobPosting` block: `title`, `hiringOrganization`,
+  `baseSalary`, `employmentType`, `datePosted`, `description`, `jobLocation`, and on
+  some `jobLocationType: TELECOMMUTE`
+- **`sitemap.xml` is the discovery path.** One flat file, not an index, 5.6 MB:
+  35,179 URLs, of which **31,676 are postings** - plus 2,148 category pages, 1,298
+  companies, 49 salary pages. No `lastmod`, and not in id order. Ids run 41 to
+  36,202
+- **The sitemap is the archive, not the live board.** An archived posting still
+  answers 200, says `Вакансия в архиве` and carries **no** `JobPosting` block. On 15
+  pages read, the block and the absence of that sentence agreed every time: ids 41,
+  30099, 34199, 35599, 35668 archived; 36120, 36202 and eight of the nine sampled
+  evenly from the newest 516 ids live
+- **The newest ids are mostly live, and ids follow time roughly.** The nine samples
+  from ids 35668-36174 were posted over the four weeks before the read, not
+  monotonic in id
+
+What it would cost, which is the open question rather than the permission:
+
+- no date filter and no total: `since` could only be applied locally on
+  `datePosted`, after the page is read
+- discovery is one 5.6 MB read, then **one request per posting**, newest id first.
+  About a hundred ids span a week at the density above, against a per-call ceiling
+  of 40 requests - so a week is several calls, each starting below the last id read
+- `jobLocationType` was present on 2 of 10 live pages; whether its absence means an
+  office or merely an unstated format was not measured - answered below: it is not
+  where this board states the format
+
+### What it yields for a backend search: not built
+
+Measured before writing an adapter, because the question after "is it permitted"
+is "what does it return". 40 pages, evenly spaced over the newest 200 ids of the
+sitemap already read (ids 35,980-36,200, posted over the two weeks before the read), with a
+backend Node.js profile's `titleExclude` and `countryAllow` applied as the server
+would apply them:
+
+| | of 40 |
+|---|---|
+| live (`JobPosting` present; the marker again agreed on every page) | 39 |
+| title survives `titleExclude` | 21 |
+| **Node.js or TypeScript in the title or the stack, among those** | **1**, and it is a QA automation role |
+| states remote work, among those | 8 |
+
+Node.js or TypeScript appears on 2 of the 39 live postings at all - that QA role and
+a frontend-focused fullstack one the title filter dropped. **Zero backend postings
+on that stack**, so the adapter is not written. Re-measure before reopening it; a
+board's mix moves.
+
+Three things the sample showed about the board, independent of the profile:
+
+- **The format lives in the page's own chips, not in the JSON-LD.** A remote chip
+  on 19 of 39 live pages, `jobLocationType: TELECOMMUTE` on 3. Reading only the
+  structured block would have reported the format as mostly unknown
+- **24 of 39 titles are in Russian**, and 17 of the 21 that survived are. An
+  English `titleExclude` does not read them, so on this board the count that passes
+  the title filter overstates what a person would keep. The same held for the
+  sources already connected - `notes/titles.md`
+- `countryAllow` cut nothing: the place is free text here, so every record counted
+  as `countryUnread`
+
+If an adapter is ever written, two constraints follow from the above. The window
+walks ids downward across calls, like the watchlist, because a week is about a
+hundred pages. And a cached sitemap reports its age in the answer, as `build.mtime`
+and `profile.mtime` do - a cache is state that goes stale in silence.
+
+### Refused: calibrating salaries from the archive
+
+The sitemap lists 31,676 postings, almost all archived, and many archived pages
+still carry a salary. That is a tempting corpus for what a role actually pays on
+this market. **Not done, and not to be:** it is some thirty thousand requests to
+one site for statistics rather than for postings anybody could apply to - the
+impolite scan this repository avoids everywhere else. A figure from an archived
+posting is also a past offer, not a present one.
+
 ## What the API answers
 
     GET /api/frontend/vacancies?type=all&sort=date&page=1
@@ -50,7 +136,7 @@ their `robots.txt` does.
 `robots.txt` disallows account and response paths — `/vacancies/*/responses`,
 `/profile`, `/suggest`, `/v1` — and not this one.
 
-## Parameter tolerance, measured on one anonymous listing, 2026-09-09
+## Parameter tolerance, measured on one anonymous listing
 
 Both silences this repository keeps finding are here, on the same board:
 

@@ -7,7 +7,7 @@ AgileFluent writes a lower-case ISO-3166 alpha-3 code, or `ww` / `unk` - measure
 `notes/agilefluent.md`. Every other source writes whatever its board shows. This is the
 shape of those values, so that "normalise the free text into a code" is decided from data.
 
-**Scope:** every row stored from these sources, 2026-09-04 to 2026-09-13, classified
+**Scope:** every row stored from these sources at the time, classified
 offline - no request. The rows are what earlier searches collected, not a fresh sample of
 each board. Values are counted by shape rather than listed, because the raw values are the
 cities of a live search.

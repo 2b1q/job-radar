@@ -13,8 +13,8 @@ paths:
 - A skipped test must be visible: print how many were skipped and why. `OK (skipped=12)` is
   not `OK`
 - **A date a filter will read is relative in the stub, never written into it.** Two
-  watchlist tests went red a week after they were written, when their fixture's publication
-  date fell outside the default `since`. A fixture that is only parsed may keep its date
+  watchlist tests went red once their fixture's publication date fell outside the default
+  `since`. A fixture that is only parsed may keep its date
 - Cover the seam, not each side of it: feed one module's output straight into its consumer
 - **A spawned server is closed in a `finally`, always.** An unclosed client leaves the
   process running and `node --test` will not exit: a suite that passes and then hangs.

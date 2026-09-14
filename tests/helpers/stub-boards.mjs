@@ -101,8 +101,8 @@ const hcPage = () => {
 // The employer watchlist. The Greenhouse instance carries the same posting the
 // other two boards already published, under the employer's own link - which is
 // the case the store has to say something about rather than merge in silence.
-// Dated yesterday at serve time: a fixed date aged out of the default `since`
-// and turned both watchlist tests red a week after they were written.
+// Dated yesterday at serve time: a fixed date ages out of the default `since`
+// and turned both watchlist tests red.
 const yesterday = () => new Date(Date.now() - 86400e3).toISOString();
 const ghTwin = () => JSON.stringify({
   jobs: [{

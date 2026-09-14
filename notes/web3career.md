@@ -117,8 +117,8 @@ everything to a filter written against the rows.
 ## `since` does not reach this board
 
 The board has no date filter, and a tag page is not ordered by recency. `skills: backend`
-under `since: week`, read 2026-09-13: 25 records dated 2026-04-09 to 2026-06-24, none newer.
-A second read the same day answered 15 records, the oldest 2026-08-22. The answer now says
+under `since: week` answered 25 records posted two to five months before the read, none newer.
+A second read soon after answered 15 records, the oldest three weeks old. The answer now says
 `sinceApplied: false` rather than echoing `since` as if it had been applied; the dates are
 on every record for whoever needs the cut.
 

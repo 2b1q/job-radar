@@ -12,12 +12,14 @@ and it is not the reason for most of these.
 
 ## Refused because `robots.txt` closes the path
 
-| source | path | what it says | date |
-|---|---|---|---|
-| Remotive | `/api/remote-jobs` | `Disallow: /api/*` **and** `Disallow: /jobs/*` for `*` | 2026-09-11, `curl` |
-| Landing.jobs | `/api/v1/jobs` | `Disallow: /api/`, and `/jobs/search` too | 2026-09-11, `curl` |
-| cryptojobslist | `/api/jobs` | `Disallow: /api/` | 2026-09-11, `curl` |
-| getmatch | listing pages | closed — see [habrcareer.md](habrcareer.md) | earlier |
+| source | path | what it says |
+|---|---|---|
+| Remotive | `/api/remote-jobs` | `Disallow: /api/*` **and** `Disallow: /jobs/*` for `*` |
+| Landing.jobs | `/api/v1/jobs` | `Disallow: /api/`, and `/jobs/search` too |
+| cryptojobslist | `/api/jobs` | `Disallow: /api/` |
+| getmatch | listing pages and `/api/` | closed; posting pages and `sitemap.xml` are not, re-measured — see [habrcareer.md](habrcareer.md) |
+
+Each row was read with `curl`.
 
 **Remotive is the awkward one, and the decision is deliberate.** Its API is
 publicly documented for programmatic use, with its own terms — at most four reads
@@ -38,8 +40,8 @@ If that reading is ever revisited, the thing to check first is whether
 
 ## The two big boards, and what their `robots.txt` actually says
 
-A desk survey said both blanket-block automated readers. Read directly on
-2026-09-11, neither does — and both are still refused, for reasons worth stating
+A desk survey said both blanket-block automated readers. Read directly, neither
+does — and both are still refused, for reasons worth stating
 accurately rather than conveniently.
 
 **Indeed.** 13 KB of `robots.txt`, and nowhere in it a bare `Disallow: /`. The
@@ -77,7 +79,7 @@ finding out that a job exists. Their hosts are in `AGGREGATOR_HOSTS`
 (`adapters/_shared/apply-link.mjs`) so that a posting linking to one of them is
 classified rather than guessed at, whether or not this repo ever reads them.
 
-| source | what it is | where its link goes | `robots.txt`, read 2026-09-11 |
+| source | what it is | where its link goes | `robots.txt` |
 |---|---|---|---|
 | superjob.ru | board, RU | its own vacancy page | no blanket block; the barrier is the key — its API wants `X-Api-App-Id` on every request, per the vendor's docs, not re-verified here |
 | rabota.ru, zarplata.ru | boards, RU | their own vacancy pages | not read |

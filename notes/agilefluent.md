@@ -49,7 +49,7 @@ adapter refused a multi-word query on the strength of it. **Both were wrong, and
 the mistake was in how the measurement was taken:** every number came from a
 query sent *inside a preset*, so what was being measured was the intersection.
 
-Measured again, 2026-09-09, the same queries with nothing else in `filters` and
+Measured again, the same queries with nothing else in `filters` and
 then with `ruroots + month` beside them:
 
 | query | alone | with the preset |
@@ -86,7 +86,7 @@ a refusal reads as a property of the board.
 
 The whole source was dead: every preset answered `/jobs/count -> HTTP 500`,
 including `anywhere`, which barely filters. Bisected field by field with
-identical headers, 2026-09-09:
+identical headers:
 
 | filter | result |
 |---|---|
@@ -305,7 +305,7 @@ the preset says remote. Not corrected here — the field is what the board said.
 
 ## `preset: remote` is mostly one country, and nothing on the board says so
 
-`preset: remote`, `since: week`, `query: node.js`, five pages, measured 2026-09-13:
+`preset: remote`, `since: week`, `query: node.js`, five pages:
 found 526, collected 250. Of the 152 records left after the title filter, **28 (18%)**
 were filed under `ww`, `unk` or a country the profile allowed; the largest of the rest were
 `usa` 28, `gbr` 14, `ind` 12, `bra` 12. The same run was 93,266 bytes of JSON, which the
@@ -316,7 +316,7 @@ no single country. It is the only source that writes a code, which is why the pr
 `countryAllow` judges codes only and counts the rest as `countryUnread`. What the other
 sources write instead is measured in `notes/country.md`.
 
-Re-run the same day with `countryAllow` and the widened title filter, `dryRun`: collected
+Re-run with `countryAllow` and the widened title filter, `dryRun`: collected
 250, `titleFiltered` 69, `countryFiltered` 136, `countryKeptBySignal` 2, `collapsed` 13,
 **returned 32** - `ww` 22, `unk` 6, 3 under an allowed code, and one `usa` kept by an
 affirmed relocation phrase. 30,577 bytes with compact records. `locationVerified` is still false: the cut is as

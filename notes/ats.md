@@ -23,8 +23,8 @@ serves its links from the company's own careers domain rather than from its own,
 so a later classifier reading hosts must not be able to disagree with these rows
 in silence.
 
-The first three were measured when this source was built; the last three on
-2026-09-11, in the section below.
+The first three were measured when this source was built; the last three later,
+in the section below.
 
 ## Finding a company's instance name
 
@@ -36,8 +36,7 @@ from the company's own domain, in which case any posting link on the page names
 it. One request, and the method is the same for all seven.
 
 **Do not go looking for it by guessing slugs against the providers' APIs.**
-Finding one live Recruitee tenant to measure took thirty-odd probes on
-2026-09-11 — and every one of those is a request to somebody's API about a
+Finding one live Recruitee tenant to measure took thirty-odd probes — and every one of those is a request to somebody's API about a
 company that is not there. It is impolite, it is slow, and it fails on exactly
 the companies whose instance is not named after them. The number is in
 [request-budget.md](request-budget.md) because it is worth knowing; the method is
@@ -77,7 +76,7 @@ rows stored before the column existed are in [dedup.md](dedup.md).
 | salary | not in this payload | `compensation.compensationTierSummary` | not in this payload |
 | skills or tags | none | none | none |
 | unknown company | **404** | **404** | **302** to its marketing site |
-| open positions: none | not seen | **200** `{"jobs":[],"apiVersion":...}`, 2026-09-13 | not seen |
+| open positions: none | not seen | **200** `{"jobs":[],"apiVersion":...}` | not seen |
 
 **On Ashby, a company with nothing open and a company that does not exist answer
 differently**, and that is the whole test for a watchlist entry that returned zero: 200
@@ -104,7 +103,7 @@ text. BambooHR's list carries no body at all — its per-posting detail endpoint
 does, at one request per vacancy, which is a whole budget for one company's
 descriptions and is not spent.
 
-## Three more providers, measured 2026-09-11
+## Three more providers
 
 Measured with `curl` against live instances. The earlier desk survey used a
 fetcher that paraphrases a response rather than returning it, which is not a
@@ -169,7 +168,7 @@ Still unmeasured on these three: whether Lever's default caps a large instance
 instance, so the record shape rests on the vendor's demo; Workable's empty-list
 case; and the rate limit of all three.
 
-## Teamtailor, measured 2026-09-11 — and the two measurements that removed code
+## Teamtailor — and the two measurements that removed code
 
 The seventh provider is the first that does not answer JSON:
 

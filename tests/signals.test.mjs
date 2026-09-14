@@ -2,7 +2,8 @@
 // should raise the signal and the one that should not.
 //
 // The vocabulary is always passed in - no stop list is a default here.
-// Text is synthetic, except the E-Verify notice, which is published verbatim.
+// Text is synthetic, except the E-Verify notice, which is published verbatim, and the
+// denials marked live, which are quoted from stored postings with the employer left out.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -103,6 +104,33 @@ test('a phrase under a negation is kept, and says it is negated', () => {
   const [offered] = detectSignals('We offer visa sponsorship for the right candidate', config);
   assert.equal(offered.polarity, 'affirmed');
   assert.doesNotMatch(signalNote([offered]), /negated/);
+});
+
+test('a denial after the phrase is a denial too', () => {
+  // Live: both were stored as relocation offered, and an offered relocation is what
+  // keeps a posting past the country filter.
+  const config = { phrases: { relocationOffered: ['visa sponsorship', 'relocation support'] } };
+  for (const sentence of [
+    'visa sponsorship not available',                          // live
+    'Visa sponsorship is not available for this role',
+    'Relocation support is not provided',
+    'Visa sponsorship: unavailable',
+  ]) {
+    assert.equal(detectSignals(sentence, config)[0]?.polarity, 'negated', sentence);
+  }
+  // A negator that starts another thought is not about the phrase.
+  assert.equal(detectSignals('We offer visa sponsorship, not just a salary', config)[0].polarity, 'affirmed');
+  const [go] = detectSignals('Strong production experience in Go, not Java', { languages: ['Go'] });
+  assert.equal(go.polarity, 'affirmed', 'the boundary after a language is not the next word');
+});
+
+test('a phrase named as a condition that does not matter raises nothing', () => {
+  // Live: neither an offer nor a denial of sponsorship.
+  const config = { phrases: { relocationOffered: ['visa sponsorship'] } };
+  assert.deepEqual(detectSignals('This applies regardless of visa sponsorship status, work '
+    + 'authorization, or physical location within the U.S.', config), []);
+  assert.equal(detectSignals('This applies regardless of location. We offer visa sponsorship.', config)[0].polarity,
+               'affirmed', 'and the same phrase elsewhere in the text still counts');
 });
 
 test('negation is read for every signal, not only for phrases', () => {

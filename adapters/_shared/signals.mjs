@@ -118,9 +118,20 @@ const NEGATION_WINDOW = 45;
 export const AFFIRMED = 'affirmed';
 export const NEGATED = 'negated';
 
+// The denial can also follow: "visa sponsorship not available", "relocation support is
+// not provided". Only a negator that opens the next words counts, so "visa sponsorship,
+// not just salary" and "Go, not Java" still assert.
+const TRAILING_NEGATION = /^[\s:\u2013\u2014-]*(?:(?:is|are|will|would|can|could|may|shall)\s+(?:not|never|unavailable)\b|(?:isn'?t|aren'?t|won'?t|can'?t|cannot|not|never|unavailable)\b)/i;
+
+// "regardless of visa sponsorship status" names the phrase as a condition that does not
+// matter - neither an offer nor a denial, so no finding at all.
+const IRRELEVANT = /\b(?:regardless|irrespective)\s+of\s+(?:\S+\s+){0,2}$/i;
+
 /** What the sentence does with the match: asserts it, or denies it. */
-function polarity(sentence, at) {
-  return NEGATION.test(sentence.slice(Math.max(0, at - NEGATION_WINDOW), at)) ? NEGATED : AFFIRMED;
+function polarity(sentence, at, length) {
+  const before = sentence.slice(Math.max(0, at - NEGATION_WINDOW), at);
+  return NEGATION.test(before) || TRAILING_NEGATION.test(sentence.slice(at + length))
+    ? NEGATED : AFFIRMED;
 }
 
 /** A regex-safe literal, so a configured phrase like "C++" is matched as text. */
@@ -144,18 +155,21 @@ const NOT_A_BOUNDARY = '\\p{L}\\p{N}+#\\-';
  */
 const languageAt = (name) => new RegExp(`(?:^|[^${NOT_A_BOUNDARY}])(${literal(name)})(?:$|[^${NOT_A_BOUNDARY}])`, 'giu');
 
-/** The first sentence where `re` matches under a rule, with its polarity. */
+/**
+ * The first sentence where `re` matches under a rule, with its polarity. A pattern
+ * that captures its subject - a language between two boundary characters - is
+ * judged on the capture, so the boundary is not mistaken for the next word.
+ */
 function findIn(lines, re, accept) {
   for (const line of lines) {
     const m = re.exec(line);
     re.lastIndex = 0;
     if (!m || !accept(line, m.index, m[0].length)) continue;
-    return { quote: line, polarity: polarity(line, m.index) };
+    const at = m[1] ? m.index + m[0].indexOf(m[1]) : m.index;
+    return { quote: line, polarity: polarity(line, at, (m[1] ?? m[0]).length) };
   }
   return null;
 }
-
-const always = () => true;
 
 /**
  * Findings in one posting's text.
@@ -184,7 +198,8 @@ export function detectSignals(text, config = {}) {
 
   for (const [name, phrases] of Object.entries(config.phrases || {})) {
     for (const phrase of phrases) {
-      const hit = findIn(lines, new RegExp(literal(phrase), 'gi'), always);
+      const hit = findIn(lines, new RegExp(literal(phrase), 'gi'),
+        (line, at) => !IRRELEVANT.test(line.slice(0, at)));
       if (hit) { add(SIGNALS.phrase, name, hit); break; }
     }
   }

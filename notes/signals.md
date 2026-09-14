@@ -4,7 +4,7 @@ Back to the [README](../README.md).
 
 A signal is a word found in a posting's text. An assertion is what the sentence
 does with it. Everything here is the distance between the two, measured on live
-postings, 2026-09-09.
+postings.
 
 ## The rule, once, for every signal
 
@@ -106,6 +106,34 @@ So **four of the nine findings were wrong**: two said something the posting did
 not, two said the reverse of what it did. All four now read correctly, and the
 two arrangements stated without a noun, which an intermediate version lost, are
 back.
+
+## A denial after the phrase, and a phrase that is only a condition
+
+Every `relocationOffered` finding in the store, four of them, re-read.
+
+| stored as | the sentence | what it says |
+|---|---|---|
+| negated | "No visa sponsorship or relocation support" | right |
+| affirmed | "The role is fully remote within India, with no visa sponsorship" | denied - but the row was written before polarity existed; the current code reads it as negated |
+| affirmed | "visa sponsorship not available" | denied, **and the current code still got it wrong** |
+| affirmed | "This applies regardless of visa sponsorship status, work authorization, or physical location within the U.S." | neither |
+
+Two rules followed, both grammar:
+
+- **A negator that opens the words after the match** - `not available`, `is not
+  provided`, `: unavailable` - denies it. Only the opening words count, so
+  "visa sponsorship, not just a salary" and "Go, not Java" still assert
+- **`regardless of` or `irrespective of` just before a phrase** makes it a condition
+  that does not matter, and no finding is raised from that sentence
+
+This mattered beyond the note: an affirmed `relocationOffered` keeps a posting past
+the country filter (`countryAllowSignals`), so a denial read as an offer was letting
+through exactly the postings it rules out. The filter reads the signals of the run in
+hand, not the stored note, so the fix reaches it at once.
+
+**The stored notes were not rewritten.** A note is written at collection and the
+posting text is not stored, so the two wrong rows stay as they were read, and a
+reader of `note` should know rows collected before this fix can carry either defect.
 
 ## What is still unmeasured
 

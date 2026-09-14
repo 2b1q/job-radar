@@ -226,7 +226,7 @@
       }
     },
     "backend-node": {
-      "_comment": "A backend individual-contributor search on Node.js. titleExclude is the part worth reading: the last pattern drops a title naming another backend language ANYWHERE in it - `Backend Developer (Java)` as well as `Java Backend Engineer` - unless the same title also names Node, TypeScript or JavaScript. Leadership titles are dropped on purpose; remove `manager` or `head of` to see them.",
+      "_comment": "A backend individual-contributor search on Node.js. titleExclude is the part worth reading: the last pattern drops a title naming another backend language ANYWHERE in it - `Backend Developer (Java)` as well as `Java Backend Engineer` - unless the same title also names Node, TypeScript or JavaScript. Leadership titles are dropped on purpose; remove `manager` or `head of` to see them. The last four patterns are the same role classes in Russian, which two of the boards write most titles in: JavaScript `\\b` knows only ASCII letters, so an English pattern never matches a Cyrillic word, and those patterns spell their own left edge instead.",
       "roles": [],
       "grades": [],
       "relocationCountries": [
@@ -281,7 +281,11 @@
         "\\b(frontend|front-end|front end|mobile|ios|android|react native|flutter|unity|game)\\b",
         "\\b(devops|site reliability|security|secops|infrastructure engineer|platform engineer|qa|quality|test automation)\\b",
         "\\b(intern|internship|accelerator program|junior|head of|director|vp|vice president|chief|cto|ceo|coo)\\b",
-        "^(?!.*\\b(node(\\.?js)?|typescript|javascript)\\b).*((?<![\\w.#+])(rust|golang|java|kotlin|scala|c\\+\\+|c#|php|ruby|python)(?![\\w#+])|\\.net\\b)"
+        "^(?!.*\\b(node(\\.?js)?|typescript|javascript)\\b).*((?<![\\w.#+])(rust|golang|go|java|kotlin|scala|c\\+\\+|c#|php|ruby|python)(?![\\w#+]|-to\\b)|\\.net\\b|битрикс|bitrix)",
+        "(?<![а-яёa-z])(аналитик|менеджер|руководител|директор|дизайнер|методист|преподавател|тренер|куратор|технический писатель|копирайтер|контент|креатор|маркетолог|рекрутер|юрист|бухгалтер|аккаунт|продаж)",
+        "(?<![а-яёa-z])(безопасност|(техническ|клиентск)\\S* поддержк|служб\\S* поддержк|тестировщик|по тестированию|архитектор решений|solution архитектор)",
+        "(?<![а-яёa-z])(стаж[её]р|младший|фронтенд|фронт-энд|верстальщик|мобильн)",
+        "(?<![а-яёa-z0-9])1[сc](?![а-яёa-z])"
       ]
     },
     "frontend-wallets": {

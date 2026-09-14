@@ -56,7 +56,7 @@ const loadedAt = (file) => {
  * already covered two different servers, and `profileStatus` reports an mtime
  * beside a name for the same reason.
  */
-const BUILD = { version: '2.4.0', mtime: loadedAt(import.meta.filename) };
+const BUILD = { version: '2.4.1', mtime: loadedAt(import.meta.filename) };
 
 // The server name is the project; the tool names are not - see CLAUDE.md.
 const server = new McpServer({ name: 'job-radar', version: BUILD.version });
