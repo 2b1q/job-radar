@@ -66,7 +66,7 @@ Current timings, and the ceiling:
 | `w3` | 3500 ms | 2500 ms | |
 | `sol` | 3500 ms | 2500 ms | a JSON API with no observed limit, kept at the pace of the other public board rather than at the pace it would tolerate |
 | `hc` | 3500 ms | 2500 ms | a JSON API with no observed limit, kept at the pace of the other public boards |
-| `ats` | 3500 ms | 2500 ms | seven hosts rather than one, and a read is one request per company rather than a walk |
+| `ats` | 3500 ms | 2500 ms | eight hosts rather than one, and a read is one request per company rather than a walk |
 
 ### What the two sources added last cost
 
@@ -79,7 +79,7 @@ Reconnaissance cost 21 requests across two sessions — robots, the filter schem
 the parameter tolerance table, the paging edges — with no refusal at any point.
 
 **`ats` — the employer watchlist.** One request per company, and none of the
-seven providers pages. So a watchlist of N companies costs exactly N requests,
+eight providers pages. So a watchlist of N companies costs exactly N requests,
 plus N again if the count tool is called first. `pages` is the walk over
 companies and bounds it the same way it bounds a page loop.
 
@@ -153,3 +153,10 @@ page. What they showed is in `notes/ats.md`.
 15 posting pages to tell live from archived, and 40 more to measure the yield - reusing
 the sitemap already read rather than paying for it twice. No refusal, no challenge.
 Findings in `notes/habrcareer.md`.
+
+### What adding Pinpoint cost
+
+12 requests, anonymous, five seconds apart. `robots.txt` (1); `/postings.json` on
+seven live instances (7), one of them twice to test the `accept` header (1); an
+invented slug (1); and the adapter's own live read of one instance and the
+invented slug (2), with no store. No refusal. Findings in `notes/ats.md`.

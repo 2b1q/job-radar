@@ -9,13 +9,13 @@
 import assert from 'node:assert/strict';
 import { unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { after, test } from 'node:test';
-import { fileURLToPath } from 'node:url';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+// Outside the repository: a run that cannot unlink it, or never reaches `after`,
+// must not leave a profile-shaped file one `git add .` away from being published.
 const NAME = `profiles.reload-${process.pid}.json`;
-const FILE = join(HERE, '..', NAME);
+const FILE = join(tmpdir(), NAME);
 
 const write = (roles) => writeFileSync(FILE, JSON.stringify({
   active: 'one',
@@ -23,7 +23,7 @@ const write = (roles) => writeFileSync(FILE, JSON.stringify({
 }, null, 2));
 
 write(['first']);
-process.env.JOBS_PROFILES = NAME;
+process.env.JOBS_PROFILES = FILE;   // absolute, which the profile path must honour
 const { afFilters, profileStatus, skillsFor } = await import('../params.mjs');
 
 /** mtimeMs has sub-millisecond resolution but not infinite: make the edit distinct. */

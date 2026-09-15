@@ -13,7 +13,7 @@ const ATS_HOSTS = [
   'ashbyhq.com', 'greenhouse.io', 'lever.co', 'workable.com', 'bamboohr.com',
   'smartrecruiters.com', 'teamtailor.com', 'gem.com', 'myworkdayjobs.com',
   'workday.com', 'recruitee.com', 'personio.de', 'jobvite.com', 'breezy.hr',
-  'applytojob.com', 'rippling.com', 'ashby.hq',
+  'applytojob.com', 'rippling.com', 'ashby.hq', 'pinpointhq.com',
 ];
 
 /**

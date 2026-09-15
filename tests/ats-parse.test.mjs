@@ -27,6 +27,7 @@ const PAYLOAD = {
   lever: fixture('ats-lever.json').postings,
   workable: fixture('ats-workable.json'),
   recruitee: fixture('ats-recruitee.json'),
+  pinpoint: fixture('ats-pinpoint.json'),
   // The one provider that answers RSS: what `list()` is handed is what its own
   // `parse` hook made, which is the seam worth exercising rather than mocking.
   teamtailor: PROVIDERS.teamtailor.parse(TEAMTAILOR_FEED),
@@ -43,6 +44,7 @@ const ENTRY = {
   // Unnamed for the same reason as workable: this provider states the company
   // on the feed's channel rather than on a posting.
   teamtailor: { provider: 'teamtailor', slug: 'iotaworks' },
+  pinpoint: { provider: 'pinpoint', slug: 'kappaco', name: 'KappaCo' },
 };
 
 /** Every provider's records, normalised, with no signals asked for. */
@@ -52,7 +54,7 @@ const recordsOf = (provider, signalConfig = {}) =>
 
 test('every provider in the fixture set is one the adapter knows', () => {
   assert.deepEqual([...PROVIDER_NAMES].sort(),
-    ['ashby', 'bamboohr', 'greenhouse', 'lever', 'recruitee', 'teamtailor', 'workable']);
+    ['ashby', 'bamboohr', 'greenhouse', 'lever', 'pinpoint', 'recruitee', 'teamtailor', 'workable']);
   for (const provider of PROVIDER_NAMES) {
     assert.ok(PAYLOAD[provider], `${provider} has a fixture`);
   }
@@ -93,9 +95,9 @@ test('the company is the provider name where it has one, and the watchlist name 
 });
 
 test('a figure enters the USD field only where a currency and a year are both stated', () => {
-  // Five of the six providers can never reach it, and the sixth only on the
-  // records where it states both. A monthly figure ranked as a yearly one is
-  // the whole reason this field is guarded rather than filled.
+  // Six of the eight providers can never reach it, and two only where they state
+  // both; Pinpoint's are tested below. A monthly figure ranked as a yearly one
+  // is the whole reason this field is guarded rather than filled.
   for (const provider of ['greenhouse', 'ashby', 'bamboohr', 'workable', 'recruitee', 'teamtailor']) {
     for (const job of recordsOf(provider)) assert.equal(job.salaryMinUsd, null, provider);
   }
@@ -161,6 +163,7 @@ test('four date dialects come out as YYYY-MM-DD or as nothing', () => {
                    ['2026-09-07', '2026-09-02', '2026-09-04']);
   assert.equal(recordsOf('workable')[0].date, '2026-09-02', 'and one already sends the date itself');
   for (const job of recordsOf('bamboohr')) assert.equal(job.date, null, 'stating none is not a date');
+  for (const job of recordsOf('pinpoint')) assert.equal(job.date, null, 'and neither does this one');
 });
 
 test('a feed is read as a feed: CDATA, an empty field and a missing one', () => {
@@ -184,6 +187,29 @@ test('a work mode is copied, and the word for "none" is not one', () => {
   // `none` is this provider's word for "no remote work", which is not the claim
   // that a job is in an office - so it becomes no claim rather than a derived one.
   assert.deepEqual(recordsOf('teamtailor').map((j) => j.format), ['hybrid', 'remote', null]);
+  assert.deepEqual(recordsOf('pinpoint').map((j) => j.format), ['remote', 'onsite', 'remote']);
+});
+
+test('a Pinpoint figure is USD a year or a label, and a hidden one stays hidden', () => {
+  // The provider sends `hour` beside `year` in the same currency, and a flag for
+  // amounts the employer chose not to show on the page.
+  const [usdYear, usdHour, hidden] = recordsOf('pinpoint');
+  assert.equal(usdYear.salaryMinUsd, 150000);
+  assert.equal(usdYear.salaryLabel, '150000-180000 USD/year');
+  assert.equal(usdHour.salaryMinUsd, null, 'USD an HOUR must never be sorted against USD a year');
+  assert.equal(usdHour.salaryLabel, '40-55 USD/hour');
+  assert.equal(hidden.salaryMinUsd, null, 'the employer hid it');
+  assert.equal(hidden.salaryLabel, 'not stated');
+});
+
+test('a Pinpoint body is every section, and a place it leaves blank is no place', () => {
+  const [sectioned, , unplaced] = recordsOf('pinpoint', SIGNALS);
+  assert.equal(sectioned.id, 'ats:pinpoint:kappaco:910001');
+  assert.equal(sectioned.country, 'Remote - EU');
+  assert.equal(unplaced.country, null);
+  // The sentences sit outside `description`, where the live lists mostly put them.
+  assert.deepEqual(sectioned.signals.map((s) => s.name).sort(), ['Go', 'onsite', 'usWorkAuthorization']);
+  assert.deepEqual(recordsOf('pinpoint', SIGNALS)[1].signals, [], 'office optional, Go and/or Node.js');
 });
 
 test('no provider publishes a skill list, and none is invented', () => {
@@ -244,7 +270,7 @@ function stub(payloads = PAYLOAD) {
     const provider = PROVIDER_NAMES.find((p) => String(url).includes({
       greenhouse: 'greenhouse.io', ashby: 'ashbyhq.com', bamboohr: 'bamboohr.com',
       lever: 'api.lever.co', workable: 'apply.workable.com', recruitee: '.recruitee.com',
-      teamtailor: 'teamtailor.com',
+      teamtailor: 'teamtailor.com', pinpoint: '.pinpointhq.com',
     }[p]));
     // One provider is read with `res.text()` and its own parse hook; the rest
     // with `res.json()`. The RSS body REFUSES to be read as JSON, exactly as a

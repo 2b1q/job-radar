@@ -1,7 +1,7 @@
 // adapters/ats.mjs - the employers' own applicant tracking systems (SRP: one
 // kind of source, nothing else).
 //
-// Seven applicant tracking systems publish an unauthenticated list of the
+// Eight applicant tracking systems publish an unauthenticated list of the
 // postings on one company's instance:
 //
 //   GET https://boards-api.greenhouse.io/v1/boards/<slug>/jobs?content=true
@@ -11,12 +11,13 @@
 //   GET https://apply.workable.com/api/v1/widget/accounts/<slug>?details=true
 //   GET https://<slug>.recruitee.com/api/offers/
 //   GET https://<careers-host>/jobs.rss?per_page=200          (Teamtailor)
+//   GET https://<slug>.pinpointhq.com/postings.json
 //
-// WHY THIS IS ONE ADAPTER AND NOT THREE, AND WHY IT IS NOT A NEW INTERFACE.
+// WHY THIS IS ONE ADAPTER AND NOT ONE PER PROVIDER, AND WHY IT IS NOT A NEW INTERFACE.
 // A board is a place to search; this is a list of employers to watch, and the
 // question it answers is "what is open at these companies", not "who is hiring".
 // That difference is real, and it turned out to live entirely in the parameters:
-// three dialects of the same request, one record shape, and `pages` meaning
+// a dialect per provider of the same request, one record shape, and `pages` meaning
 // "how many companies to read" instead of "how many pages to walk". Everything
 // downstream - the store, the dedup key, the four tools - needed nothing. A
 // second interface would have bought a second code path for the sake of a word.
@@ -33,39 +34,43 @@
 //
 // Reconnaissance, recorded because guessing has cost this project a session
 // before - numbers in notes/ats.md:
-//   the list      one request per company, whole. None of the three pages, and
-//                 none of them offers a search parameter, so a query is a local
-//                 filter here and is labelled as one
+//   the list      one request per company, whole. No provider is paged here, and
+//                 none has been seen to offer a search parameter, so a query is a
+//                 local filter here and is labelled as one
 //   totals        Greenhouse states `meta.total` and BambooHR `meta.totalCount`;
 //                 Ashby states none, so its own list length is the total
-//   unknown slug  five answer 404. BambooHR answers 302 to its marketing site,
-//                 so redirects are NOT followed here - a followed one parses as
-//                 "this company has no openings". Lever and Recruitee also tell
-//                 an unknown company APART from one with nothing open, which
-//                 answers 200 and an empty list - so an empty list is an answer
-//                 and a 404 is a failure, and they are not confused here
+//   unknown slug  every provider but BambooHR answers 404; BambooHR answers 302
+//                 to its marketing site, so redirects are NOT followed here - a
+//                 followed one parses as "this company has no openings". Ashby,
+//                 Lever and Recruitee tell an unknown company APART from one with
+//                 nothing open, which answers 200 and an empty list - so an empty
+//                 list is an answer and a 404 is a failure, and they are not
+//                 confused here
 //   description   Greenhouse sends the posting body twice-escaped in `content`
 //                 and Ashby sends it as `descriptionPlain`. BambooHR's list
 //                 carries none at all, and its per-posting detail endpoint would
 //                 cost one request per vacancy
-//   skills        none of the three publishes a tag or skill list
-//   salary        four state no period next to an amount, so nothing enters a
-//                 field named after one. Lever states a currency AND an
-//                 interval, and is the only source in this repository that can
-//                 fill `salaryMinUsd` honestly. Recruitee states both too, but
-//                 only `month` has been seen in its period vocabulary, so
-//                 nothing from it enters the USD field until a yearly spelling
-//                 has actually been measured
-//   transport     five answer JSON and one answers RSS, which is the `parse`
-//                 hook. Two things were measured rather than coded around: the
-//                 feed ignores `accept: application/json` and answers anyway,
-//                 and a company serving its careers site from its OWN domain is
-//                 still answered directly at the provider host - no redirect, so
-//                 `redirect: 'manual'` costs nothing here
-//   text          Lever leaves the body off some records - 4 of 13 measured -
-//                 so `textAvailable` travels with every record here: no signals
-//                 because there was nothing to read is not the same fact as no
-//                 signals in the text
+//   skills        no provider publishes a skill list; Recruitee's `tags` has been
+//                 seen only empty
+//   salary        only Lever, Recruitee and Pinpoint state a period next to an
+//                 amount; from the rest nothing enters a field named after one.
+//                 Lever and Pinpoint are the only sources in this repository that
+//                 can fill `salaryMinUsd` honestly: only `month` has been seen in
+//                 Recruitee's period vocabulary, so nothing from it enters the
+//                 USD field until a yearly spelling has actually been measured
+//   transport     every provider answers JSON but Teamtailor, which answers RSS
+//                 through the `parse` hook. Two things were measured rather than
+//                 coded around: the feed ignores `accept: application/json` and
+//                 answers anyway, and a company serving its careers site from its
+//                 OWN domain is still answered directly at the provider host - no
+//                 redirect, so `redirect: 'manual'` costs nothing here
+//   text          Lever leaves the body off some records, so `textAvailable`
+//                 travels with every record here: no signals because there was
+//                 nothing to read is not the same fact as no signals in the text
+//   date          BambooHR and Pinpoint state none in the list, so `since`
+//                 keeps their records as undated rather than dropping them
+//   clients       a browser was reported answered 404 on a live Pinpoint posting
+//                 that a plain fetch read, so a browser's 404 there proves nothing
 //
 // Returns the shared shape, so the store and the tools do not care where a
 // vacancy came from.
@@ -75,7 +80,7 @@ import { detectSignals, signalNote } from './_shared/signals.mjs';
 import { strip } from './_shared/text.mjs';
 import { elements, field } from './_shared/xml.mjs';
 
-// Its own timings. Three different hosts, none of which has refused anything
+// Its own timings. A host per provider, none of which has refused anything
 // here, and a watchlist read is one request per company rather than a walk - so
 // this sits at the pace of the public boards rather than below it.
 const http = createHttp({
@@ -103,6 +108,12 @@ const statedMode = (mode) => (mode && mode !== 'unspecified' ? mode : null);
 
 /** Lever's own word for a year - another provider's would invent a rate. */
 const LEVER_YEARLY = 'per-year-salary';
+
+/** Pinpoint's, which it also sends `hour` beside in the same currency. */
+const PINPOINT_YEARLY = 'year';
+
+/** The sections Pinpoint splits one posting body into, in the page's order. */
+const PINPOINT_SECTIONS = ['description', 'key_responsibilities', 'skills_knowledge_expertise', 'benefits'];
 
 /** `<slug>.teamtailor.com`, or the company's own domain where it points one. */
 const careersHost = (slug) =>
@@ -270,6 +281,31 @@ export const PROVIDERS = {
       text: strip(job.description || ''),
     }),
   },
+  pinpoint: {
+    url: (slug) => `https://${encodeURIComponent(slug)}.pinpointhq.com/postings.json`,
+    list: (data) => data.data,
+    total: (data) => data.data.length,   // the provider states no total of its own
+    record: (job, entry) => {
+      // An amount the employer hid from the page is not published here either.
+      const { label, usd } = job.compensation_visible
+        ? money({ min: job.compensation_minimum, max: job.compensation_maximum,
+                  currency: job.compensation_currency, period: job.compensation_frequency },
+                PINPOINT_YEARLY)
+        : money(null);
+      return {
+        id: `ats:pinpoint:${entry.slug}:${job.id}`,
+        company: entry.name || entry.slug,    // the provider names none; the slug is it
+        title: strip(job.title || ''),
+        url: job.url || null,
+        country: strip(job.location?.name || '') || null,
+        format: job.workplace_type || null,
+        salaryLabel: label,
+        salaryMinUsd: usd,
+        date: null,                           // the list states no publication date
+        text: PINPOINT_SECTIONS.map((key) => strip(job[key] || '')).filter(Boolean).join('\n'),
+      };
+    },
+  },
 };
 
 export const PROVIDER_NAMES = Object.keys(PROVIDERS);
@@ -279,9 +315,9 @@ export const PROVIDER_NAMES = Object.keys(PROVIDERS);
  *
  * `applyAtEmployer` is TRUE and is not a guess: the url addresses the employer's
  * own instance, and `applyFrom` says that came from the provider rather than
- * from a host - which on two of them is the company's own domain. `textAvailable`
- * is whether there was a body at all: no signals over nothing is a fact about
- * the source, not about the job.
+ * from a host - which on Recruitee and Teamtailor is the company's own domain.
+ * `textAvailable` is whether there was a body at all: no signals over nothing is
+ * a fact about the source, not about the job.
  */
 export function normalize(raw, entry, signalConfig = {}) {
   const { text, ...job } = raw;
@@ -317,7 +353,7 @@ async function get(entry) {
   }
   if (!res.ok) throw new Error(`ats: HTTP ${res.status} from ${entry.provider} for "${entry.slug}"`);
   // Where a dialect stops being the adapter's business: everything below is
-  // the same for all seven.
+  // the same for every provider.
   const data = provider.parse ? provider.parse(await res.text()) : await res.json();
   const list = provider.list(data);
   if (!Array.isArray(list)) {

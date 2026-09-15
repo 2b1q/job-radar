@@ -26,5 +26,12 @@ Rules that keep them from merging back together:
 - If a paragraph answers none of "why would I use this", "how do I start it" and "what
   will it not do", it is not a README paragraph
 - Say a thing in one file. A sentence repeated in two drifts into two different claims
+- **A date is data or it is not written.** A provider's date format, a fixture timestamp
+  and an example value stay — the documentation means nothing without them. A date saying
+  when somebody measured, added or had something — *measured on*, *added in*, *as of today
+  the watchlist holds* — is not written: the text of a public repository must not read as
+  the chronicle of one person's job search. Freshness is stated as scope instead, *seven
+  instances, 241 postings*. Commit metadata carries dates anyway; the point is that a date
+  in a paragraph is readable and greppable, and a commit date is not
 - No project history and no rationale essays anywhere. The README may say what the tool is
   for; it may not claim anything that has not been measured

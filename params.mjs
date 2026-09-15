@@ -7,7 +7,7 @@
 // mistakes live anyway.
 
 import { readFileSync, statSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Two board vocabularies that belong to their adapters and are checked here,
@@ -33,7 +33,7 @@ function loadProfile() {
   const file = process.env.JOBS_PROFILES || 'profiles.json';
   let data;
   try {
-    data = JSON.parse(readFileSync(join(HERE, file), 'utf8'));
+    data = JSON.parse(readFileSync(resolve(HERE, file), 'utf8'));
   } catch (err) {
     if (err.code === 'ENOENT') {
       throw new Error(`no search profile: ${file} is missing. Copy the template `
@@ -55,7 +55,7 @@ function loadProfile() {
 }
 
 /** Where the profile is read from, so a reload can stat it. */
-const profilePath = () => join(HERE, process.env.JOBS_PROFILES || 'profiles.json');
+const profilePath = () => resolve(HERE, process.env.JOBS_PROFILES || 'profiles.json');
 
 // Everything below is derived from the profile, so a reload has to rebuild all
 // of it at once. `let` rather than `const` because these are exported and read

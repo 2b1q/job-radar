@@ -56,7 +56,7 @@ const loadedAt = (file) => {
  * already covered two different servers, and `profileStatus` reports an mtime
  * beside a name for the same reason.
  */
-const BUILD = { version: '2.4.1', mtime: loadedAt(import.meta.filename) };
+const BUILD = { version: '2.5.1', mtime: loadedAt(import.meta.filename) };
 
 // The server name is the project; the tool names are not - see CLAUDE.md.
 const server = new McpServer({ name: 'job-radar', version: BUILD.version });
@@ -159,13 +159,13 @@ const DRIVERS = {
       + 'watchlist says how many employers exist and how many this call reached, and complete is '
       + 'true only when that was all of them AND every one answered - a shorter walk or a single '
       + 'failing company makes it false.',
-    searchHelp: 'Greenhouse, Ashby, BambooHR, Lever, Workable, Teamtailor and Recruitee instances read one company per request, so pages means '
+    searchHelp: 'Greenhouse, Ashby, BambooHR, Lever, Workable, Teamtailor, Recruitee and Pinpoint instances read one company per request, so pages means '
       + 'how many companies to read, and query filters titles locally because no provider offers '
       + 'a search. The companies read are the ones read longest ago, so repeated calls walk the '
       + 'whole watchlist without reordering the profile; watchlist says how many exist and how '
       + 'many this call reached, and companies lists them. One company that fails no longer ends '
       + 'the run: it lands in errors and the walk continues, with found counted over the ones '
-      + 'that answered. since IS applied here, locally, on the dates two of the three providers '
+      + 'that answered. since IS applied here, locally, on the dates the providers that state one '
       + 'publish - dateFiltered says how many that dropped and undated how many carried no date '
       + 'and were kept.',
     sinceApplied: true,
@@ -406,8 +406,8 @@ function watchedEmployers() {
   const employers = watchlist();
   if (!employers.length) {
     throw new Error('ats: the active profile names no employers to watch. Add a '
-      + '`watchlist` of { provider, slug } entries - greenhouse, ashby or '
-      + 'bamboohr, with the company\'s own instance name - see '
+      + '`watchlist` of { provider, slug } entries - one of '
+      + `${ats.PROVIDER_NAMES.join(', ')}, with the company's own instance name - see `
       + 'profiles.example.json. Whose openings to follow is yours, not the '
       + "repository's");
   }
@@ -415,7 +415,7 @@ function watchedEmployers() {
 }
 
 // The employer watchlist. `pages` is a walk over COMPANIES here rather than over
-// pages: none of the three providers pages, and none of them offers a search
+// pages: no provider is paged here, and none of them offers a search
 // parameter either - so `query` is a local filter over titles and the answer
 // says how many records it dropped.
 /**

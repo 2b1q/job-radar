@@ -6,7 +6,7 @@ Every job board in this repository was measured on one question — does its app
 link reach the employer, or only the board — and the boards added for coverage
 all answer *no* (see [habrcareer.md](habrcareer.md)). The place where the answer
 is *yes* is not a board at all: it is the employer's own applicant tracking
-system, and seven of the common ones publish an unauthenticated list per company.
+system, and eight of the common ones publish an unauthenticated list per company.
 
     GET https://boards-api.greenhouse.io/v1/boards/<slug>/jobs?content=true
     GET https://api.ashbyhq.com/posting-api/job-board/<slug>?includeCompensation=true
@@ -15,16 +15,17 @@ system, and seven of the common ones publish an unauthenticated list per company
     GET https://apply.workable.com/api/v1/widget/accounts/<slug>?details=true
     GET https://<slug>.recruitee.com/api/offers/
     GET https://<careers-host>/jobs.rss?per_page=200          (Teamtailor)
+    GET https://<slug>.pinpointhq.com/postings.json
 
-`applyAtEmployer` is `true` for every record from all seven, and it is not a
+`applyAtEmployer` is `true` for every record from all eight, and it is not a
 courtesy: the url addresses the company's own instance. It carries
-`applyFrom: 'provider'` to say where that certainty came from — two of the seven
-serves its links from the company's own careers domain rather than from its own,
-so a later classifier reading hosts must not be able to disagree with these rows
-in silence.
+`applyFrom: 'provider'` to say where that certainty came from — Recruitee and
+Teamtailor serve their links from the company's own careers domain rather than
+from their own, so a later classifier reading hosts must not be able to disagree
+with these rows in silence.
 
-The first three were measured when this source was built; the last three later,
-in the section below.
+Greenhouse, Ashby and BambooHR are the table just below; every other provider
+has a section of its own after it.
 
 ## Finding a company's instance name
 
@@ -33,7 +34,7 @@ provider, and there is one cheap way to find it: **open the employer's careers
 page and look at where it goes.** Either the careers link redirects to the
 provider's host, and the subdomain is the slug, or the provider's board is served
 from the company's own domain, in which case any posting link on the page names
-it. One request, and the method is the same for all seven.
+it. One request, and the method is the same for all eight.
 
 **Do not go looking for it by guessing slugs against the providers' APIs.**
 Finding one live Recruitee tenant to measure took thirty-odd probes — and every one of those is a request to somebody's API about a
@@ -46,8 +47,8 @@ not worth repeating.
 
 The difference is real — a board answers "who is hiring", a watchlist answers
 "what is open at these companies" — and it turned out to live entirely in the
-parameters. Three dialects of one request, one record shape, and `pages` meaning
-*how many companies to read* rather than *how many pages to walk*. Nothing
+parameters. A dialect per provider of one request, one record shape, and `pages`
+meaning *how many companies to read* rather than *how many pages to walk*. Nothing
 downstream needed anything: not the store, not the dedup key, not the four
 tools. A second interface would have bought a second code path for a word.
 
@@ -85,14 +86,15 @@ instance at zero and one invented slug. It does not settle the third case: a boa
 company left for another provider was seen answering 200 with postings whose pages were
 gone - so 200 says the instance exists, not that it is the one the company uses.
 
-Three consequences, in the order they bite:
+Three consequences for these providers, in the order they bite:
 
 - **Redirects are not followed.** A followed 302 does not fail — it parses as a
   page with no postings, which reads as a company with nothing open. `redirect:
   'manual'`, and any 3xx is "no such instance".
-- **No provider states a period beside an amount**, so `salaryMinUsd` is null on
-  every record here and the figure stays in the label.
-- **A query is a local filter.** None of the three offers a search parameter, so
+- **None of these three states a period beside an amount**, so nothing from them
+  enters `salaryMinUsd` and the figure stays in the label. Lever, Recruitee and
+  Pinpoint, below, do state one.
+- **A query is a local filter.** No provider here offers a search parameter, so
   a query narrows the titles after they arrive, and the answer reports
   `filtered` separately from `found`. A local filter and a board's own answer are
   different facts about a run.
@@ -127,15 +129,15 @@ measurement by this repository's rules - so every figure below was taken again.
 
 Scope: Lever on the vendor's demo instance (13 postings) plus two live instances
 with nothing open; Workable on two live instances, 51 and 89 postings; Recruitee
-on one live tenant with 12 and one with none. All three are in `PROVIDERS` as of
-this note; the paragraphs below are what the adapter was written against.
+on one live tenant with 12 and one with none. All three are in `PROVIDERS`; the
+paragraphs below are what the adapter was written against.
 
 What each row costs the adapter, in the order it matters:
 
 - **All three tell "no such company" apart from "this company has nothing
   open".** That is the question the whole walk turns on: a 404 belongs in
-  `errors`, a 200 with an empty list is a company that answered. The three
-  current providers answer 404, 404 and a 302 to marketing; these three are 404
+  `errors`, a 200 with an empty list is a company that answered. Greenhouse,
+  Ashby and BambooHR answer 404, 404 and a 302 to marketing; these three are 404
   with a body, and the empty case is a plain empty list.
 - **Lever is the first provider that can fill `salaryMinUsd` honestly.** It is
   the only one measured here that names a currency AND a period beside the
@@ -155,8 +157,8 @@ What each row costs the adapter, in the order it matters:
   characters are the date, and the rest has to be dropped rather than parsed.
 - **Workable answers big.** 644 KB for 89 postings and 296 KB for 51, in one
   request, and `details=true` is what carries the bodies. One request per company
-  either way, but the bytes are a different order from the three current
-  providers.
+  either way, but the bytes are a different order from Greenhouse, Ashby and
+  BambooHR.
 - **`robots.txt`**: Lever `Allow: /` with `Crawl-delay: 1`. Workable allows
   everything, and states `Content-Signal: search=yes, ai-input=yes, ai-train=no`
   — reading a posting to answer a person's question is the `ai-input` it permits.
@@ -215,6 +217,60 @@ parser — what it deliberately cannot do is listed in its own header. CDATA is
 unwrapped there even though neither measured feed uses it: a title handed back as
 `<![CDATA[...]]>` would go into a dedup key and match nothing, in silence.
 
+## Pinpoint — a JSON list the careers page does not advertise
+
+The careers page and `/jobs` render in the browser, and a posting page reads
+server-side, so the first plan was to walk posting pages. Beside them sits a JSON
+list that makes that unnecessary:
+
+    GET https://<slug>.pinpointhq.com/postings.json
+
+| | Pinpoint |
+|---|---|
+| envelope | `{ data[] }`, and nothing else |
+| total | none — its own list length |
+| paging | none seen: **187 postings in one answer**, 1.3 MB |
+| search parameter | not looked for; a query is the local title filter |
+| company name | not stated — the slug is it |
+| identity | `id`, a numeric string; the link carries a separate UUID |
+| link | `url`, absolute, on `<slug>.pinpointhq.com` on 241 of 241 |
+| publication date | **not in the list**; `deadline_at` is the only date, and null on every record seen |
+| posting body | four HTML sections — `description`, `key_responsibilities`, `skills_knowledge_expertise`, `benefits` — escaped once, present on 241 of 241 |
+| work mode | `workplace_type`: `remote`, `onsite`; `hybrid` never seen |
+| location | `location { name, city, province, ... }` — `name` is free text, two countries joined by `or` among it |
+| salary | `compensation_minimum`, `_maximum`, `_currency`, `_frequency`, and `compensation_visible` |
+| unknown company | **404**, with an HTML body |
+| open positions: none | not seen |
+
+Scope: seven live instances, 1 to 187 postings, 241 in all, found through a web
+search for posting pages rather than by guessing slugs. `robots.txt` disallows
+`/mydata`, `/admin` and `/companies`, not `/postings.json`. `accept:
+application/json` changes nothing.
+
+What each row costs the adapter:
+
+- **The frequency is `year` or `hour`, beside the same currency.** Both seen on
+  two instances in USD; on the largest, 46 of 186 stated figures were hourly. So
+  Pinpoint is the second provider that fills `salaryMinUsd`, and only on `year`.
+- **`compensation_visible: false` hides the figure from the page**, and the
+  adapter hides it too. No hidden record carried an amount in the scope above, so
+  that branch guards the flag rather than a case that was seen.
+- **A requirement can sit in any section, `benefits` included.** A keyword count
+  over the 241 — words, not signals — found work-authorisation vocabulary
+  (`authoriz`, `sponsor`, `citizen`, `ITAR`, `E-Verify`) outside `description` on
+  191, in `benefits` on 185, and office vocabulary outside it on 44. So the
+  signals read all four sections; reading `description` alone would miss most.
+- **No date.** As on BambooHR, `since` keeps these records as `undated`.
+- **One `country` where the posting names several.** `location.name` is copied
+  whole, `or` and all. `countryAllow` judges codes only, so today it is counted as
+  `countryUnread` and nothing is cut — but a parser that reads one country out of
+  it would decide on one value of several. It is a known case for the open
+  question in [country.md](country.md), not a surprise.
+- **A browser is not a witness.** Reported with the request for this provider,
+  and not reproduced here: one live posting page that a plain fetch read answered
+  404 to a built-in browser. Until it is ruled out, a browser's 404 on this
+  provider is re-checked with another client before a posting is called gone.
+
 ## Personio: deferred, and why that is the finding
 
 Personio publishes the same kind of per-company XML —
@@ -239,8 +295,9 @@ failure.
 The three things a human currently opens a posting to read — a work
 authorisation requirement, an office-presence requirement, and which backend
 language the requirements actually name — are only in the posting's own text. So
-the signals are raised wherever there is text: here, on the two providers of
-three that publish a body, and on AgileFluent, which summarises every posting.
+the signals are raised wherever there is text: here, on every provider that
+publishes a body — all but BambooHR — and on AgileFluent, which summarises every
+posting.
 
 The difference between the two is worth keeping in view. An employer publishes
 the posting; a board summarises it, and a summary keeps an office requirement and
@@ -260,13 +317,13 @@ is the part a title and a tag list get wrong:
 Nothing is dropped for a signal. The finding carries the sentence it was found
 in, and the decision stays with the person reading it.
 
-What each rule costs, on 276 postings from these two providers and on 200 from a
+What each rule costs, on 276 postings from Greenhouse and Ashby and on 200 from a
 board, is in [signals.md](signals.md) — along with the two defects a live run
 found in it.
 
 ## What is still unmeasured
 
-Whether any of the seven rate limits an anonymous reader, and at what. A
+Whether any of the eight rate limits an anonymous reader, and at what. A
 watchlist read is one request per company rather than a walk, so the totals are
 small — but small is not the same as measured, and the pace is set at the public
 boards' rather than at what these hosts would tolerate.
@@ -274,7 +331,7 @@ boards' rather than at what these hosts would tolerate.
 What a LARGE instance does, on every provider that states no total: none of them
 pages, so a company with a thousand postings either sends all of them or sends
 some of them, and nothing measured so far says which. The largest instance read
-here had 89. Teamtailor's `per_page` is the one parameter that would answer it,
+here had 187, on Pinpoint, in one answer. Teamtailor's `per_page` is the one parameter that would answer it,
 and it was accepted without ever being needed.
 
 ## One bad slug used to end the whole run
@@ -310,3 +367,10 @@ Greenhouse states `first_published` and Ashby `publishedAt`; BambooHR's list
 states no date at all. So the cut is local: `dateFiltered` counts what it
 dropped, and a posting with **no** date is kept and counted in `undated` rather
 than dropped on a guess.
+
+**On BambooHR and Pinpoint that means `since` does not filter at all**: neither
+list states a date, so every record of theirs passes. The only sign of freshness
+left is when a posting first reached the store — a year-old posting and today's
+look alike. It weighs more on Pinpoint, where one instance answered 187 postings:
+a company like that is read whole on its first call, and its records carry no
+date wherever they are copied next.

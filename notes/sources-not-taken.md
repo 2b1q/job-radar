@@ -3,7 +3,7 @@
 Back to the [README](../README.md).
 
 A public tool should be able to say why it does not read a board people expect it
-to read. Each entry below was checked, and each says what was checked and when,
+to read. Each entry below was checked, and each says what was checked and in what scope,
 so the decision can be revisited rather than inherited.
 
 The repository's own criterion is in [ats.md](ats.md): does the apply link reach
@@ -92,6 +92,27 @@ live store, `null` to `false`, and that row carried no `apply_url`, so nothing
 stored had to be rewritten. The value is forward-looking: each of them serves
 postings under a `jobs.` or `careers.` host of its own, which the careers-page
 rule would otherwise read as an employer.
+
+## Refused on yield: too few postings where the search is
+
+The criterion is in `.claude/rules/adapters.md`: the number of postings in the
+category a profile searches, and where the apply link goes. Both entries below
+were measured by hand by whoever requested the Pinpoint provider, **and not
+re-measured here** — they are recorded as that measurement, with its
+scope, so the decision can be re-run rather than inherited.
+
+| source | what it is | measured | why refused |
+|---|---|---|---|
+| choicy.work | a recruitment agency first, with a job board beside it | location facets `Remote 35`, `Spain 2`; **5 cards** in *Backend development*, one posted by the agency itself with the employer hidden and one by another agency | the yield. Technically dear too: built on Bubble (the one-line `robots.txt`, `Disallow: /version-test/`, is its signature), no sitemap, rendered client-side, so a server fetch gets only meta tags |
+| YC jobs (ycombinator.com/jobs) | startups from one accelerator | the first 15 *engineering* postings: every `Remote` bound to named countries or to one metro area, and **1 of 15** remote beyond the US | a geography most profiles cannot pass, so an adapter spends requests on records the country filter drops. Applying goes through a login at `account.ycombinator.com` |
+
+What would change the verdicts: for choicy.work, tens of cards in *Backend
+development* rather than five — a one-minute check. For YC, a country list on
+remote postings that a profile's `countryAllow` would keep.
+
+choicy.work's salary filter offers BTC beside USD and EUR, and it announces
+postings in a Telegram channel; a person who wants that can subscribe by hand. Neither needs an
+adapter.
 
 ## Refused because there is nothing to read
 

@@ -85,7 +85,7 @@ read yesterday.
 | `sol` | jobs.solana.com | nothing | **the employer**, for most postings |
 | `hc` | career.habr.com | nothing | the board |
 | `tm` | TalentMove | **a paid account**, its session cookie in `TM_COOKIE` | the board |
-| `ats` | Greenhouse, Ashby, BambooHR, Lever, Workable, Teamtailor and Recruitee instances | **a watchlist** of companies in your profile | **the employer**, always |
+| `ats` | Greenhouse, Ashby, BambooHR, Lever, Workable, Teamtailor, Recruitee and Pinpoint instances | **a watchlist** of companies in your profile | **the employer**, always |
 
 Two of those need something before they answer at all, and it is fairer to say
 so here than to let an empty result explain it. **`tm` will not work without a

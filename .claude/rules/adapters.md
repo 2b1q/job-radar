@@ -67,6 +67,14 @@ Each cost a debugging session. The measurements behind them are in `notes/`.
   period the board did not state never enters a field named after one
 - **Generalising from one sample has failed three times here.** One category, one match, one
   board state. Measure a second case before writing a rule
+- **Before a new board gets an adapter, measure two numbers: how many postings it has in
+  the category the profile searches, and where its apply link goes.** It earns an adapter
+  with tens of postings there and a link that reaches the employer; anything less is a
+  manual channel. Three boards in a row were refused on those two numbers alone —
+  `notes/sources-not-taken.md`, and getmatch in `notes/habrcareer.md`. The boards added
+  for coverage predate this rule and are kept deliberately: they answer *no* on the apply
+  link, and `README.md` says why they are still worth reading — for finding out that a job
+  exists. The rule sizes up a candidate; it does not re-litigate what is already in
 
 ## The two things still copied per adapter
 
